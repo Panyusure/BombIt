@@ -1,0 +1,18 @@
+# 行尾规范：Windows 批处理必须用 CRLF。
+# 只用 LF 时，某些 cmd 版本会把 goto 标签/多行命令读丢（本项目踩过：
+# UTF-8 中文 + LF 的 .bat 在中文 Windows 的 936 代码页下直接解析错乱）。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 文本文件统一按 LF 存库，检出时按平台转换
+*.js   text
+*.html text
+*.css  text
+*.json text
+*.md   text
+
+# 二进制素材，别做行尾转换
+*.png  binary
+*.jpg  binary
+*.ogg  binary
+*.zip  binary

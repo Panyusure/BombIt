@@ -1,20 +1,29 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-title Q版泡泡堂 - 启动
+title BombIt
 
 rem ============================================================
-rem  为什么要有这个启动器：
-rem    浏览器默认不许页面在用户交互之前出声（自动播放策略）。
-rem    双击 index.html 进去，音乐要等你点一下或按个键才响；
-rem    带上 --autoplay-policy=no-user-gesture-required 打开，
-rem    加载完就出声，F5 刷新也一样 —— 这才是"刷新就有音乐"。
+rem  Why this launcher exists:
+rem    Browsers refuse to play audio before the user interacts with the
+rem    page, so opening index.html directly needs one click before the
+rem    music starts. Launching with
+rem    --autoplay-policy=no-user-gesture-required removes that step, for
+rem    this load and for every F5 reload after it.
 rem
-rem  为什么要单独一个浏览器配置目录：
-rem    浏览器只在启动主进程时读命令行参数。如果你的 Edge / Chrome
-rem    已经开着，新命令会被交给现有进程，参数直接丢掉。
-rem    指定 --user-data-dir 就能保证开出一个独立进程、参数生效，
-rem    也顺便让游戏窗口不干扰你平时那个浏览器窗口。
+rem  Why a dedicated user-data-dir:
+rem    A browser only reads command line flags when it starts its main
+rem    process. If Edge/Chrome is already running, the new command is
+rem    handed to that process and the flags are dropped. A separate
+rem    profile forces a fresh process, and keeps the game window apart
+rem    from the everyday browser window.
+rem
+rem  NOTE: this file is intentionally pure ASCII.
+rem    A .bat containing UTF-8 Chinese is decoded with the console code
+rem    page (936 on Chinese Windows). That shifts lines and can swallow
+rem    quotes / carets / parentheses, after which the script dies with
+rem    "'xxx' is not recognized as an internal or external command".
+rem    Keep every message here in ASCII; Chinese lives in the game and
+rem    in the documents.
 rem ============================================================
 
 set EDGE_X86=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe
@@ -23,24 +32,22 @@ set CHROME_X64=%ProgramFiles%\Google\Chrome\Application\chrome.exe
 set CHROME_X86=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe
 
 set BROWSER=
-for %%P in ("%EDGE_X86%" "%EDGE_X64%" "%CHROME_X64%" "%CHROME_X86%") do (
-  if not defined BROWSER if exist %%P set BROWSER=%%~P
-)
+if exist "%EDGE_X86%" set BROWSER=%EDGE_X86%
+if not defined BROWSER if exist "%EDGE_X64%" set BROWSER=%EDGE_X64%
+if not defined BROWSER if exist "%CHROME_X64%" set BROWSER=%CHROME_X64%
+if not defined BROWSER if exist "%CHROME_X86%" set BROWSER=%CHROME_X86%
 
-if not defined BROWSER (
-  echo.
-  echo [!] 没找到 Edge 或 Chrome。
-  echo     请直接双击 index.html：游戏完全能玩，
-  echo     只是音乐要等你点一下画面或按个键才会响。
-  echo.
-  pause
-  exit /b 1
-)
+if not defined BROWSER goto nobrowser
 
-start "" "%BROWSER%" ^
-  --autoplay-policy=no-user-gesture-required ^
-  --user-data-dir="%LOCALAPPDATA%\BombIt\browser" ^
-  --no-first-run --no-default-browser-check --new-window ^
-  "%~dp0index.html"
-
+echo Starting BombIt with music enabled...
+start "" "%BROWSER%" --autoplay-policy=no-user-gesture-required --user-data-dir="%LOCALAPPDATA%\BombIt\browser" --no-first-run --no-default-browser-check --new-window "%~dp0index.html"
 exit /b 0
+
+:nobrowser
+echo.
+echo [!] Edge or Chrome was not found.
+echo     You can still play: double-click index.html
+echo     (click once on the page if the music does not start).
+echo.
+pause
+exit /b 1
