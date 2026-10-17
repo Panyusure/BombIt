@@ -11,4 +11,4 @@
 aqcs/小诺.jpg  --[ tools/extract_characters.py ]-->  assets/characters/xiaonuo-hd.png
 ```
 
-素材取材自《奥奇传说》，仅供个人学习与娱乐使用，请勿用于商业用途 —— 这也是它不随仓库分发的原因。
+素材取材自《奥奇传说》，仅供个人学习与娱乐使用，请勿商用盈利 —— 这也是它不随仓库分发的原因。
