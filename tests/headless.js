@@ -1520,7 +1520,7 @@ group('17. 音效：无音频环境下的降级');
 }
 
 /* ============================================================
- * 17b. 背景音乐：三首曲子 + 场景映射 + 无音频环境下的降级
+ * 17b. 背景音乐：五首 AI 配乐 + 场景映射 + 无音频环境下的降级
  *
  * Node 里既没有 document 也没有 Audio，正好验证「曲子文件 / 环境有问题
  * 也不能影响游戏运行」，同时把「场景 → 哪一首」这条映射钉死。
@@ -1533,32 +1533,48 @@ group('17b. 背景音乐：场景映射与无音频环境降级');
   ok(typeof window.Audio === 'undefined',
      'Node 环境确实没有 Audio（这组测试的前提）');
 
-  // 三首曲子：菜单 / 关卡 / BOSS，缺一个都会导致某个场景没声
+  // 五首配乐都必须存在，避免只换配置却漏提交音频。
   const ids = Object.keys(M.tracks).sort();
-  ok(ids.join(',') === 'boss,level,menu', '曲目表正好是 menu / level / boss 三首', ids.join(','));
+  ok(ids.join(',') === 'boss,boss2,level,level2,menu', '菜单一首、普通关两首、BOSS 两首', ids.join(','));
   const files = ids.map(id => M.tracks[id].file);
-  ok(files.every(f => /\.ogg$/.test(f)), '三首都是 .ogg 文件', files.join(' | '));
-  ok(new Set(files).size === 3, '三首曲子指向三个不同文件');
+  ok(files.every(f => /\.mp3$/.test(f)), '五首都是 MP3 文件', files.join(' | '));
+  ok(new Set(files).size === 5, '五首曲子指向五个不同文件');
   ok(files.every(f => f.indexOf('assets/audio/') === 0),
      '曲子放在 assets/audio/ 下，且路径相对项目根目录', files.join(' | '));
-  // 文件名里有空格、括号、假名，最容易写错；直接查磁盘，写错立刻红
+  // 直接检查运行文件，路径写错立刻报错。
   const missing = files.filter(f => !fs.existsSync(path.join(ROOT, f)));
-  ok(missing.length === 0, '三首曲子文件真的在磁盘上', missing.join(' | '));
+  ok(missing.length === 0, '五首曲子文件真的在磁盘上', missing.join(' | '));
   ok(files.every(f => fs.statSync(path.join(ROOT, f)).size > 10000),
-     '三首曲子都不是空文件', files.map(f => fs.statSync(path.join(ROOT, f)).size).join(' / '));
-  ok(M.tracks.menu.file.indexOf('天空之城') >= 0 &&
-     M.tracks.level.file.indexOf('カノン') >= 0 &&
-     M.tracks.boss.file.indexOf('欢乐斗地主') >= 0,
-     '菜单=天空之城 / 关卡=カノン / BOSS=欢乐斗地主');
+     '五首曲子都不是空文件', files.map(f => fs.statSync(path.join(ROOT, f)).size).join(' / '));
+  ok(M.tracks.menu.file === 'assets/audio/menu.mp3' &&
+     M.tracks.level.file === 'assets/audio/level-1.mp3' && M.tracks.level2.file === 'assets/audio/level-2.mp3' &&
+     M.tracks.boss.file === 'assets/audio/boss-1.mp3' && M.tracks.boss2.file === 'assets/audio/boss-2.mp3',
+     '五首 AI 配乐按用户标注映射到对应场景');
+  ok(['boss', 'boss2'].every(id => M.tracks[id].volume <= .08 &&
+     M.tracks[id].volume <= Math.min(M.tracks.level.volume, M.tracks.level2.volume) * .6),
+     '两首人声 BOSS 曲保持较低音量，不盖过对局音效');
 
   // 场景 → 曲目
-  ok(M.trackFor({ scene: 'menu' }) === 'menu', '开始界面放天空之城');
+  ok(M.trackFor({ scene: 'menu' }) === 'menu', '开始界面放菜单曲');
   ok(M.trackFor({ scene: 'playing', world: {}, bossBattle: false, bossAlive: false }) === 'level',
-     '普通关卡放カノン');
+     '普通关卡默认放小怪关 1');
   ok(M.trackFor({ scene: 'playing', world: {}, bossBattle: true, bossAlive: true }) === 'boss',
-     'BOSS 战且鲁鲁旦还活着时放欢乐斗地主');
+     'BOSS 战且鲁鲁旦还活着时放 BOSS 配乐');
   ok(M.trackFor({ scene: 'playing', world: {}, bossBattle: true, bossAlive: false }) === 'level',
-     '打死鲁鲁旦之后（哪怕小怪没清完）换回关卡曲，不再一直放斗地主');
+     '打死鲁鲁旦之后（哪怕小怪没清完）换回普通关配乐');
+  for (let level = 1; level <= 10; level++) {
+    const state = { scene: 'playing', world: { mode: 'adventure', match: { level } },
+      bossBattle: level % 5 === 0, bossAlive: true };
+    const expected = level === 5 ? 'boss' : level === 10 ? 'boss2' : level % 2 === 0 ? 'level2' : 'level';
+    ok(M.trackFor(state) === expected, '第 ' + level + ' 关使用正确配乐', M.trackFor(state));
+  }
+  ok(M.trackFor({ scene: 'result', world: { mode: 'adventure', match: { level: 10 } },
+     bossBattle: true, bossAlive: true }) === 'boss2', '最终 BOSS 战失败结算保持第二首 BOSS 曲');
+  ok(M.trackFor({ scene: 'playing', world: { mode: 'adventure', match: { level: 10 } },
+     bossBattle: true, bossAlive: false }) === 'level2', '最终 BOSS 被击败后换回第二首普通配乐');
+  ok(M.trackFor({ scene: 'playing', world: { mode: 'dig' } }) === 'level' &&
+     M.trackFor({ scene: 'playing', world: { mode: 'versus' } }) === 'level2',
+     '拆砖与双人模式分别使用两首普通关配乐');
   ok(M.trackFor({ scene: 'result', world: {}, bossBattle: false, bossAlive: false }) === 'level',
      '结算界面继续放刚才那首，不突然跳回菜单曲');
   ok(M.trackFor({ scene: 'result', world: {}, bossBattle: true, bossAlive: false }) === 'level' &&
@@ -1581,7 +1597,7 @@ group('17b. 背景音乐：场景映射与无音频环境降级');
     ok(!realBoss.alive && minionB.alive, '测试前提：鲁鲁旦已死而小怪还活着', 'minion=' + minionB.alive);
     ok(ENe.bossAlive(bw) === false, '鲁鲁旦一死 bossAlive 立刻为假（小怪没清完也一样）');
     ok(M.trackFor({ scene: 'playing', world: bw, bossBattle: true, bossAlive: ENe.bossAlive(bw) }) === 'level',
-       '于是音乐切回关卡曲 —— 这就是那个「BOSS 死了还放斗地主」的 bug');
+       'BOSS 被击败后恢复普通关配乐');
     ENe.sweep(bw);
     ok(ENe.bossAlive(bw) === false, 'BOSS 实体被回收后依然为假（不会因为找不到 BOSS 而回退成真）');
     ok(ENe.bossAlive(null) === false && ENe.bossAlive({}) === false, '没有世界 / 没有敌人时安全返回假');

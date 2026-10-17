@@ -54,7 +54,7 @@
  *   场景状态机、菜单导航、鼠标点击、音频解锁、渲染不抛异常
  * 用 --dump-dom 把结果抓回终端
  * ============================================================ */
-window.addEventListener('load', function () {
+window.addEventListener('load', async function () {
   var lines = [], pass = 0, fail = 0;
 
   function ok(cond, label, detail) {
@@ -84,7 +84,7 @@ window.addEventListener('load', function () {
     group('0. 音乐：刷新即尝试播放，而不是等点击');
     ok(!!BI.music && BI.music.failed === false, 'music.js 已装载且浏览器支持 Audio',
        BI.music ? BI.music.status() : 'missing');
-    ok(BI.music.id === 'menu', 'boot() 就把菜单曲点好了（天空之城）', String(BI.music.id));
+    ok(BI.music.id === 'menu', 'boot() 就把新的 AI 菜单曲点好了', String(BI.music.id));
     ok((BI.music.el && BI.music.el.paused === false) || BI.music.blocked === true || BI.music.ready === true,
        '加载后立刻调了 play()：要么在播，要么被浏览器策略拦下', BI.music.status());
     ok(BI.music.el.loop === true, '菜单曲是循环播放的');
@@ -471,8 +471,8 @@ window.addEventListener('load', function () {
     ok(BI.sfx.enabled === muteBefore, '再按 M 恢复', BI.sfx.status());
     ok(BI.sfx.master.gain.value > 0, '恢复后主音量回来', String(BI.sfx.master.gain.value));
 
-    /* ---------- 11B. 背景音乐：菜单 / 关卡 / BOSS 三首曲子 ---------- */
-    group('11B. 音乐：三首 ogg 随场景切换 / 暂停 / 静音');
+    /* ---------- 11B. 五首 AI 配乐：场景切换与人声音量 ---------- */
+    group('11B. 音乐：五首 MP3 随场景切换 / 暂停 / 静音');
     var MUS = BI.music;
     ok(!!MUS && MUS.failed === false, '音乐模块可用（浏览器提供了 Audio）',
        MUS ? MUS.status() : 'music.js 没加载');
@@ -480,30 +480,35 @@ window.addEventListener('load', function () {
     // 曲子路径必须由 music.js 自己的地址反推根目录：
     // index.html 在根目录、tests/browser.html 深一层，写死相对路径总有一个页面找不到曲子
     var levelSrc = MUS.srcFor('level');
-    ok(levelSrc.indexOf('/assets/audio/') > 0 && decodeURIComponent(levelSrc).indexOf('カノン') > 0,
+    ok(levelSrc.indexOf('/assets/audio/') > 0 && levelSrc.indexOf('level-1.mp3') > 0,
        '关卡曲路径按项目根目录拼出来（不依赖页面深度）', levelSrc);
 
     D.gotoMenu();
     D.tick(0.1);
-    ok(MUS.id === 'menu' && MUS.el && decodeURIComponent(MUS.el.src).indexOf('天空之城') > 0,
-       '菜单放天空之城', MUS.el ? MUS.el.src : 'no element');
+    ok(MUS.id === 'menu' && MUS.el && MUS.el.src.indexOf('menu.mp3') > 0,
+       '菜单播放用户提供的菜单曲', MUS.el ? MUS.el.src : 'no element');
     ok(MUS.el.loop === true, '单曲循环播放');
 
     D.quickStart('dig', 'MUS_DIG');
     D.tick(0.1);
-    ok(MUS.id === 'level', '计时拆砖放カノン', MUS.id);
+    ok(MUS.id === 'level', '计时拆砖播放小怪关 1', MUS.id);
     D.quickStart('versus', 'MUS_VS');
     D.tick(0.1);
-    ok(MUS.id === 'level', '双人对战也放カノン', MUS.id);
+    ok(MUS.id === 'level2', '双人对战播放小怪关 2', MUS.id);
     D.quickStart('adventure', 'MUS_ADV');
     D.tick(0.1);
-    ok(MUS.id === 'level', '闯关普通关放カノン', MUS.id);
+    ok(MUS.id === 'level', '冒险首关播放小怪关 1', MUS.id);
 
     D.startLevel(5);
     D.press('Enter');
     D.tick(0.1);
-    ok(D.world.map.bossBattle && MUS.id === 'boss', '第 5 关 BOSS 战换上欢乐斗地主', MUS.id);
-    ok(decodeURIComponent(MUS.el.src).indexOf('欢乐斗地主') > 0, 'BOSS 曲就是欢乐斗地主', MUS.el.src);
+    ok(D.world.map.bossBattle && MUS.id === 'boss', '第 5 关播放鲁鲁旦别捣蛋 1', MUS.id);
+    ok(MUS.el.src.indexOf('boss-1.mp3') > 0, 'BOSS 曲使用新的 AI 音乐', MUS.el.src);
+    for (var fade = 0; fade < 8; fade++) MUS.update(.25);
+    ok(MUS.el.volume > 0 && MUS.el.volume <= .08, 'BOSS 曲淡入完成后仍保持低音量', String(MUS.el.volume));
+    var bossElement = MUS.el;
+    D.tick(.1);
+    ok(MUS.el === bossElement, '同一场 BOSS 战不会每帧换曲或重建播放器');
 
     // 打死鲁鲁旦、小怪还没清完：音乐必须换回关卡曲（真实踩到过的 bug）
     var bossEnt = D.world.enemies.filter(function (e) { return e.type === 'boss'; })[0];
@@ -513,14 +518,21 @@ window.addEventListener('load', function () {
        minions.some(function (e) { return e.alive; }),
        '测试前提：鲁鲁旦已死，场上还有活着的小怪', '小怪 ' + minions.length + ' 只');
     D.tick(0.1);
-    ok(MUS.id === 'level', 'BOSS 死后小怪还在时音乐切回カノン，不再一直放斗地主', MUS.id);
+    ok(MUS.id === 'level', 'BOSS 死后小怪还在时切回普通关配乐', MUS.id);
 
     D.startLevel(6);
     D.press('Enter');
     D.tick(0.1);
-    ok(!D.world.map.bossBattle && MUS.id === 'level', '打完 BOSS 回普通关换回カノン', MUS.id);
-    ok(MUS._els.menu && MUS._els.level && MUS._els.boss,
-       '三首曲子各建一个音频元素，切回来不重新下载');
+    ok(!D.world.map.bossBattle && MUS.id === 'level2', '第 6 关换回小怪关 2', MUS.id);
+    D.startLevel(10);
+    D.press('Enter');
+    D.tick(.1);
+    ok(MUS.id === 'boss2' && MUS.el.src.indexOf('boss-2.mp3') > 0,
+       '第 10 关播放鲁鲁旦别捣蛋 2', MUS.id);
+    for (var fade2 = 0; fade2 < 8; fade2++) MUS.update(.25);
+    ok(MUS.el.volume > 0 && MUS.el.volume <= .08, '第二首人声曲同样保持低音量', String(MUS.el.volume));
+    ok(MUS._els.menu && MUS._els.level && MUS._els.level2 && MUS._els.boss && MUS._els.boss2,
+       '五首配乐各复用一个音频元素');
 
     // 暂停菜单：战场冻结，音乐也停住，回来接着放
     D.press('Escape');
@@ -1572,6 +1584,32 @@ window.addEventListener('load', function () {
         '六角色×四种起始关卡累计运行24分钟逻辑时间，持续投弹/技能/换关无异常',stressBad.join(';'));
       lines.push('STRESS runs='+stressRuns+' seconds='+stressSeconds+' bombs='+stressBombs);
     }
+
+    group('五首配乐的浏览器加载与格式兼容');
+    var audioChecks = await Promise.all(Object.keys(MUS.tracks).map(function (id) {
+      return new Promise(function (resolve) {
+        var audio = new Audio(), timer;
+        function finish(valid) {
+          clearTimeout(timer);
+          audio.onloadedmetadata = audio.onerror = null;
+          var detail = audio.error ? 'media error ' + audio.error.code : 'duration=' + audio.duration;
+          audio.removeAttribute('src');
+          audio.load();
+          resolve({ id: id, valid: valid, detail: detail });
+        }
+        audio.onloadedmetadata = function () {
+          finish(isFinite(audio.duration) && audio.duration > 10 && audio.canPlayType('audio/mpeg') !== '');
+        };
+        audio.onerror = function () { finish(false); };
+        timer = setTimeout(function () { finish(false); }, 6000);
+        audio.preload = 'auto';
+        audio.src = MUS.srcFor(id);
+        audio.load();
+      });
+    }));
+    audioChecks.forEach(function (result) {
+      ok(result.valid, result.id + ' 配乐文件可加载且格式受支持', result.detail);
+    });
 
     /* ---------- 18. 全程零报错 ---------- */
     group('18. 运行期报错');

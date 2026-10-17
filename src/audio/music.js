@@ -1,11 +1,11 @@
 /* ============================================================
- * music.js —— 背景音乐（三首 ogg，按场景切换）
+ * music.js —— 背景音乐（五首 AI 配乐，按场景切换）
  *
- *   菜单     → 天空之城（八音盒版）
- *   关卡对局 → カノン（八音盒版）
- *   BOSS 战  → 欢乐斗地主背景音乐
+ *   菜单     → 开始菜单
+ *   普通关   → 小怪关 1 / 2（按关卡交替；拆砖用 1，对战用 2）
+ *   BOSS 战  → 鲁鲁旦别捣蛋 1 / 2（第 5 / 10 关，人声低音量）
  *
- * 音效依旧是程序化合成（见 sfx.js），这里只管这三首曲子。
+ * 音效依旧是程序化合成（见 sfx.js），配乐音量保持在音效之下。
  *
  * 为什么用 HTMLAudioElement 而不是 Web Audio：
  *   曲子是几 MB 的文件，Audio 元素能边下边播、缓存和并发都交给浏览器，
@@ -26,9 +26,11 @@
   'use strict';
 
   var TRACKS = {
-    menu:  { file: 'assets/audio/纯音乐 - 天空之城 (八音盒版).ogg',      title: '天空之城',   volume: .32 },
-    level: { file: 'assets/audio/纯音乐 - カノン (八音盒版).ogg',        title: 'カノン',     volume: .32 },
-    boss:  { file: 'assets/audio/纯音乐 - 欢乐斗地主背景音乐 (Inst_).ogg', title: '欢乐斗地主', volume: .28 }
+    menu:   { file: 'assets/audio/menu.mp3', title: '开始菜单', volume: .20 },
+    level:  { file: 'assets/audio/level-1.mp3', title: '小怪关 1', volume: .22 },
+    level2: { file: 'assets/audio/level-2.mp3', title: '小怪关 2', volume: .22 },
+    boss:   { file: 'assets/audio/boss-1.mp3', title: '鲁鲁旦别捣蛋 1', volume: .065 },
+    boss2:  { file: 'assets/audio/boss-2.mp3', title: '鲁鲁旦别捣蛋 2', volume: .06 }
   };
 
   var FADE_IN = 1.4;    // 秒：新曲淡入
@@ -74,13 +76,15 @@
 
     /**
      * 场景 → 曲目。做成纯函数是为了能无头测试：
-     * 只有菜单放天空之城，BOSS 关放欢乐斗地主，其余对局放カノン。
+     * 关卡决定曲目，不在每帧随机选曲，重开与暂停也不会反复切歌。
      * BOSS 曲要**鲁鲁旦还活着**才放：击败它之后哪怕小怪没清完也换回关卡曲。
      * 结算界面仍带着 world，所以继续放刚才那首，不会突然跳回菜单曲。
      */
     trackFor: function (state) {
       if (!state || state.scene === 'menu' || !state.world) return 'menu';
-      return (state.bossBattle && state.bossAlive) ? 'boss' : 'level';
+      var w = state.world, level = (w.match && w.match.level) || 1;
+      if (state.bossBattle && state.bossAlive) return level >= 10 ? 'boss2' : 'boss';
+      return (w.mode === 'versus' || (w.mode === 'adventure' && level % 2 === 0)) ? 'level2' : 'level';
     },
 
     /** 曲目 id -> Audio 元素（惰性创建，同一首只建一次） */
