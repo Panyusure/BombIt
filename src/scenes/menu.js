@@ -290,18 +290,20 @@
 
       // 选人时直接看到所选技能，避免开局后还不知道角色差异。
       var versus = MODES[st.modeIndex].players === 2;
+      var soulScope = versus ? '每场' : '每关';
       D.blob(ctx, 152, 486, 548, 72, 12, 'rgba(230,241,224,.06)', 'rgba(227,240,220,.08)', 1);
       [0, 1].slice(0, versus ? 2 : 1).forEach(function (player, i) {
         var ch = st.chars[st.charIndex[player]], info = BI.SKILLS[ch.id] || BI.SKILLS.xiaonuo;
         var lore = BI.CHARACTER_LORE[ch.id];
-        // 通灵次数直接读配置：以后调数值，菜单不会再写着旧数字
-        var soulText = '放弹' + info.bombsToEvolve + '次或击杀通灵';
+        // 通灵次数直接读配置：以后调数值，菜单不会再写着旧数字。
+        // 对战用“击倒”，单人用“击杀”；对战通灵条跨回合保留，所以是“每场”。
+        var soulText = '放弹' + info.bombsToEvolve + '次或' + (versus ? '击倒' : '击杀') + '通灵';
         if (versus) {
-          D.text(ctx, (player ? '2P · ' : '1P · ') + ch.name + ' · ' + info.name + (info.passive ? ' · 每回合' + soulText : ' · ' + (player ? 'F' : '右 Shift') + ' / ' + info.cd + '秒'),
+          D.text(ctx, (player ? '2P · ' : '1P · ') + ch.name + ' · ' + info.name + (info.passive ? ' · ' + soulScope + soulText : ' · ' + (player ? 'F' : '右 Shift') + ' / ' + info.cd + '秒'),
             168, 499 + i * 35, { font: '12px "Microsoft YaHei", sans-serif', fill: info.color });
           if (lore) D.text(ctx, lore.summary, 168, 515 + i * 35, { font: '11px "Microsoft YaHei", sans-serif', fill: '#bdcfd5' });
         } else {
-          D.text(ctx, (info.passive ? '被动 · ' : 'Q · ') + info.name + (info.passive ? ' · 每关' + soulText : ' · 冷却' + info.cd + '秒'),
+          D.text(ctx, (info.passive ? '被动 · ' : 'Q · ') + info.name + (info.passive ? ' · ' + soulScope + soulText : ' · 冷却' + info.cd + '秒'),
             168, 503, { font: 'bold 13px "Microsoft YaHei", sans-serif', fill: info.color });
           D.text(ctx, info.desc, 168, 524, { font: '12px "Microsoft YaHei", sans-serif', fill: '#bdcfd5' });
           if (lore) D.text(ctx, lore.summary, 168, 545, { font: '11.5px "Microsoft YaHei", sans-serif', fill: '#e8c7ec' });

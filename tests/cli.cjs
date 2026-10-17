@@ -229,22 +229,6 @@ test('interactive terminal accepts movement, new games and quit without losing t
   assert.match(p.stdout, /Advanced 12 frames/); assert.match(p.stdout, /adventure/);
   assert.equal(handle(runtime(), { op: 'state', session: 'human' }, directory).state.frame, 12);
 });
-test('reference agent wins a real game solely through JSONL and exports a portable verified replay', () => {
-  const session = 'proof-' + require('node:crypto').randomBytes(4).toString('hex');
-  const p = spawnSync(process.execPath, ['examples/agent.cjs', '--session', session], { cwd: ROOT,
-    env: { ...process.env, BOMBIT_SESSION_DIR: directory }, encoding: 'utf8', timeout: 30000 });
-  assert.equal(p.status, 0, p.stdout + p.stderr);
-  assert.match(p.stdout, /winner=p1/); assert.match(p.stdout, /Replay verified=true/);
-  const replay = p.stdout.match(/file=(.+)/)[1].trim();
-  const verification = handle(runtime(), { op: 'replay', file: replay }, directory);
-  assert.equal(verification.verified, true); assert.equal(verification.state.bricksLeft, 0);
-  assert.equal(verification.state.match.winner, 'p1'); assert.ok(verification.state.players[0].lives >= 3);
-  assert.equal(fs.existsSync(sessionPath(session,directory)), false);
-  assert.match(path.basename(replay), /^\d{8}-\d{6}-reference-dig-arui-win-[0-9a-f]{6}\.replay\.json$/);
-  const canonical=path.basename(replay,'.replay.json');
-  assert.equal(handle(runtime(),{op:'state',session:canonical},directory).archived,true);
-  assert.throws(()=>handle(runtime(),{op:'state',session},directory),{code:'SESSION_NOT_FOUND'});
-});
 test('finish leaves one standard replay, cleans per-game scratch, and cannot resurrect legacy names',()=>{
   const B=runtime(), id='finish-'+require('node:crypto').randomBytes(3).toString('hex');
   const created=handle(B,{op:'new',agent:'codex',mode:'dig',seed:'finish',session:id},directory);
@@ -290,6 +274,25 @@ test('session and archived names identify each selected character and both versu
   assert.ok(result.session.includes('-versus-weilai-vs-xiaotian-stopped-'));
   const saved=JSON.parse(fs.readFileSync(result.replayFile,'utf8'));
   assert.deepEqual(saved.recording.characters,['weilai','xiaotian']);
+});
+
+test('future soul charges on versus knockouts and survives round resets',()=>{
+  const B=runtime();
+  const w=create(B,normalizeConfig({mode:'versus',character:'weilai',character2:'axiu',seed:'pvp-soul'}));
+  const p1=w.players[0],p2=w.players[1];p2.invuln=0;
+  B.rules.hurtPlayer(w,p2,'flame');
+  B.match.update(w,1/60);
+  assert.equal(w.match.scores.p1,1);
+  assert.equal(p1.soulBombs,B.SKILLS.weilai.bombsToEvolve);
+  assert.equal(p1.soulEvolved,true);
+  B.engine.nextRound(w);
+  assert.equal(p1.soulBombs,B.SKILLS.weilai.bombsToEvolve,'versus keeps soul progress across rounds');
+  assert.equal(p1.soulEvolved,true);
+  const a=create(B,normalizeConfig({mode:'adventure',character:'weilai',seed:'level-soul'}));
+  a.players[0].soulBombs=3;a.players[0].soulEvolved=true;
+  B.engine.nextLevel(a);
+  assert.equal(a.players[0].soulBombs,0,'adventure still clears soul on level change');
+  assert.equal(a.players[0].soulEvolved,false);
 });
 
 test('legacy names migrate without changing replay data, aliases or file count',()=>{

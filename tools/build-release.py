@@ -13,7 +13,7 @@ import zipfile
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--ref', default='HEAD')
-parser.add_argument('--version', default='v2.0')
+parser.add_argument('--version', default='v2.1')
 parser.add_argument('--replace', action='store_true', help='Atomically replace an existing verified package')
 args = parser.parse_args()
 assert re.fullmatch(r'v\d+\.\d+(?:\.\d+)?', args.version), 'Invalid release version'
@@ -31,7 +31,7 @@ with tarfile.open(fileobj=io.BytesIO(archive)) as source:
 assert json.loads(files['package.json'])['version'].startswith(args.version[1:] + '.'), 'package version mismatch'
 assert ("VERSION: '" + args.version + "'").encode() in files['src/core/config.js'], 'menu version mismatch'
 for required in ['index.html', 'replay.html', 'AGENTS.md', 'cli/bombit.cjs', 'cli/navigation.cjs',
-                 'replay/core.js', 'replay/view.js', 'docs/CLI与Agent.md', 'examples/agent.cjs', '启动游戏.bat']:
+                 'replay/core.js', 'replay/view.js', 'docs/CLI与Agent.md', '启动游戏.bat']:
     assert required in files, required
 fd, temp_name = tempfile.mkstemp(prefix=output.name + '.', suffix='.tmp', dir=folder)
 os.close(fd)

@@ -108,6 +108,8 @@
       for (var i = 0; i < dead.length; i++) {
         var other = (dead[i].id === 'p1') ? 'p2' : 'p1';
         m.scores[other]++;
+        // PvP 击倒同样给未来充能；同帧双死时双方各算一次击倒。
+        BI.skills.chargeSoul(world, world.playerById(other), BI.SKILLS.weilai.bombsToEvolve);
       }
 
       var p1Done = m.scores.p1 >= m.targetScore;

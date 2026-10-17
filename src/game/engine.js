@@ -45,7 +45,7 @@
     world.time = 0;
     world.timeStop = null;
     world.skillEffects = [];
-    world.players.forEach(function (p) { p.carouselTravel = 0; p.carouselRewarded = false; BI.skills.resetLevel(p); });
+    world.players.forEach(function (p) { p.carouselTravel = 0; p.carouselRewarded = false; });
     world._aiField = null;
     world._aiBreakField = null;
     world._levelFxFired = false;
@@ -126,6 +126,8 @@
 
     for (var i = 0; i < w.players.length; i++) {
       var p = w.players[i];
+      // 冒险换关清空通灵进度；对战跨回合保留由 startNewRound 负责。
+      BI.skills.resetLevel(p);
       // 火力 / 炸弹数 / 速度成长保留（设计方案 §4.6 的正反馈）
       // 未使用的护盾保留到抵挡伤害；星星的临时效果在换关时结束。
       R.changeLives(p, 1);   // 每过一关补一条命，上限统一读取配置
@@ -161,6 +163,8 @@
       p.glove = false;
       p.picked = {};
       p.skillCd = 0;
+      // 道具与临时技能清零，但未来的通灵条跨回合保留；
+      // 否则 PvP 击倒后的充能会被紧接着的换回合立刻抹掉。
       respawn(w, p);
     }
     MA.beginRound(w);

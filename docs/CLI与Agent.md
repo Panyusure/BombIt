@@ -30,7 +30,7 @@ node cli/bombit.cjs act --session $session --wait --frames 60 --json
 | `.bombit/tmp/games/<session>/` | 确有必要的单局调试文件；`finish` 自动删除 |
 | `.bombit/tmp/tests/<run>/` | 测试用会话、回放、浏览器 profile、日志；成功测试自动清理 |
 | `.bombit/cache/browser-replays/current.js` | 浏览器只缓存最近一次观看的回放，可覆盖、可再生成 |
-| `examples/`、`tests/`、`tools/` | 可复用的 agent、测试与维护源码，不是运行时产物 |
+| `tests/`、`tools/` | 测试与维护源码，不是运行时产物 |
 
 正式回放统一命名为 `YYYYMMDD-HHMMSS-agent-mode-character-result-id.replay.json`：
 
@@ -64,7 +64,7 @@ node cli/bombit.cjs finish --session $session --json
 4. 调用 `act`、`batch`、`path` 或 `goTo`；使用返回的最新状态继续，直到 `state.match.over` 为 `true`。
 5. 结束或中止时执行 `finish --session ID --json`，确认唯一回放已验证归档，清理该局临时文件。
 
-角色 ID：`xiaonuo`（小诺）、`axiu`（阿修）、`arui`（阿瑞）、`xiaoyan`（小炎）、`xiaotian`（小天）、`weilai`（未来）。未来的技能为放弹被动，不能主动施放。
+角色 ID：`xiaonuo`（小诺）、`axiu`（阿修）、`arui`（阿瑞）、`xiaoyan`（小炎）、`xiaotian`（小天）、`weilai`（未来）。未来的技能为放弹被动，不能主动施放；对战击倒对手同样充能，通灵条跨回合保留。
 
 模式：`dig` 在 180 秒内炸光软砖；`adventure` 清空十关敌人，第 5、10 关有 BOSS；`versus` 是两个外部控制的玩家，先到 2 分获胜。冒险介绍自动确认，换关事件仍会返回。对战不自动补 AI，未提供动作的玩家原地等待。
 
@@ -200,7 +200,7 @@ node tools/benchmark-cli.cjs data/replays/你的标准回放文件.replay.json
 
 该端到端基准提升约 4.7 倍；耗时也包含游戏模拟和最终重演校验，不只是文件写入。不同电脑和调用方式的收益会不同。
 
-## 可运行的示例 Agent 与回放
+## 回放观看与 Agent 自测
 
 ### 在浏览器观看
 
@@ -219,15 +219,11 @@ node cli/watch.cjs --file data/replays/你的标准回放文件.replay.json
 
 如果加载提示规则版本或某一步校验失败，需要使用与录制时一致的游戏代码；播放器不会忽略差异继续展示错误对局。回放仅支持观看，键盘方向键用于跳转，不能改变 agent 的操作。
 
-### 自动游玩与命令校验
+### Agent 自行游玩
 
-```powershell
-node examples/agent.cjs
-```
+项目不附带固定策略的示例 Agent。每个 Agent 由自己的模型根据 `state` 自行决定策略：用 `serve --memory` 常驻观察，用 `act/batch/path/goTo` 提交动作，用 `finish` 收尾。`--assist` 只提供保守危险区间，寻路不预测火焰、毒区或敌人未来投弹，危险路段应分段观察。
 
-示例只通过 CLI 的 JSONL 观察与行动：寻找能炸砖的位置、规划撤离路线、放弹、避开爆炸、等待，再重复。默认使用固定森林种子 `agent-demo-3`，便于复验；它是拆砖基线策略，不保证任意地图或其他玩法通关。会话由程序规范命名，用 `--seed TEXT` 尝试其他地图。
-
-已验证默认种子从 69 块砖开始，在 143.87 秒清空，770 次动作，零死亡，最终保留 4 条生命。示例会自动验证、收尾，仅保留 `data/replays/` 中一份标准命名回放；文件路径见输出的 `file=`。
+会话由程序按 `new --agent` 规范命名；一局结束自动校验、归档，只保留 `data/replays/` 中的标准回放。
 
 ```powershell
 node cli/bombit.cjs replay --session 返回的规范回放名 --json
@@ -245,6 +241,6 @@ npm test
 npm run test:browser
 ```
 
-前者运行原有 953 项逻辑检查和 CLI 集成测试（含一次完整 agent 通关）；后者运行真实 Edge/Chrome 的浏览器检查。可用 `BOMBIT_BROWSER` 指定浏览器路径。受限测试环境可显式执行 `node tests/run-browser.cjs --in-process`。
+前者运行全部逻辑检查和 CLI 集成测试；后者运行真实 Edge/Chrome 的浏览器检查。可用 `BOMBIT_BROWSER` 指定浏览器路径。受限测试环境可显式执行 `node tests/run-browser.cjs --in-process`。
 
-核心文件：`src/game/engine.js` 统一推进；`snapshot.js` 保存随机流、共享对象引用与地图附加属性；`observation.js` 输出公开局面；`cli/session.cjs` 管理会话、并发与回放；`examples/agent.cjs` 演示独立控制端。
+核心文件：`src/game/engine.js` 统一推进；`snapshot.js` 保存随机流、共享对象引用与地图附加属性；`observation.js` 输出公开局面；`cli/session.cjs` 管理会话、并发与回放。

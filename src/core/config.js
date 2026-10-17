@@ -12,7 +12,7 @@
 
   BI.config = {
     /* ---------- 版本 ---------- */
-    VERSION: 'v2.0',               // 开始界面署名处显示；发版时改这里
+    VERSION: 'v2.1',               // 开始界面署名处显示；发版时改这里
 
     /* ---------- 网格与画布 ---------- */
     TILE: TILE,
@@ -126,7 +126,7 @@
   BI.SKILLS = {
     // 通灵两条路：放弹满 6 次，或击杀任意一只敌人直接满条。
     weilai: { name: '迁境奇点', tag: '放弹被动', color: '#a9eafa', cd: 0, passive: true, bombsToEvolve: 6,
-      desc: '放弹减速45%·2秒；放弹6次或击杀1只敌人通灵，通灵后减速75%·3秒、范围5×5。',
+      desc: '放弹减速45%·2秒；放弹6次、击杀敌人或击倒对手通灵，通灵后减速75%·3秒、范围5×5。',
       normal: { radius: 1, rate: .45, duration: 2 }, evolved: { radius: 2, rate: .75, duration: 3 } },
     xiaonuo: { name: '时光星域', tag: '时空控制', color: '#8dd8ff', cd: 12,
       desc: '冻结怪物和敌方炸弹3秒；对战中使对手减速。' },
