@@ -23,42 +23,90 @@
   }
   #boot {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    color: #fff; font-size: 18px; letter-spacing: 2px; pointer-events: none;
-    opacity: 1;
-    /* visibility 兜底：万一浏览器没跑过渡（无头截图 / 减少动效设置），
-       也保证它一定会消失，不会糊在画面上 */
-    transition: opacity .35s ease, visibility 0s .35s;
+    z-index: 10; background: radial-gradient(ellipse at 50% 35%, #304b53, #101e2b 75%);
+    color: #eaf1e6; text-align: center;
   }
-  #boot.hide { opacity: 0; visibility: hidden; }
+  .boot-card { width: min(360px, 78vw); }
+  .boot-mark { width: 58px; height: 58px; border-radius: 50%; margin: 0 auto 28px;
+    background: radial-gradient(circle at 32% 28%, #fff9, transparent 30%), linear-gradient(145deg, #b5ead8, #5ec8f0);
+    box-shadow: 0 0 48px #a6e3cf25, inset 0 0 0 2px #ffffff40; }
+  .boot-label { font: 11px Consolas, monospace; letter-spacing: 5px; color: #9ccabf; }
+  .boot-card h1 { font-size: 28px; margin: 14px 0 10px; letter-spacing: 4px; }
+  #boot-status { color: #9fb5bd; font-size: 13px; min-height: 20px; margin: 0 0 25px; }
+  #boot-progress { display: block; appearance: none; width: 100%; height: 7px; border: 0; border-radius: 9px; overflow: hidden; background: #ffffff12; color: #b4e4ce; }
+  #boot-progress::-webkit-progress-bar { background: #ffffff12; border-radius: 9px; }
+  #boot-progress::-webkit-progress-value { background: linear-gradient(90deg, #72bfc2, #b4e4ce); border-radius: 9px; }
+  #boot-progress::-moz-progress-bar { background: #b4e4ce; border-radius: 9px; }
+  .boot-count { display: flex; justify-content: space-between; color: #829da9; font-size: 11px; margin-top: 12px; }
+  #boot-retry { margin-top: 20px; padding: 9px 20px; color: #15352d; background: #b4e4ce; border: 0; border-radius: 8px; cursor: pointer; }
 </style>
 </head>
 <body>
   <div id="stage"><canvas id="game"></canvas></div>
-  <div id="boot">载入中…</div>
+  <div id="boot" role="status" aria-live="polite">
+    <div class="boot-card">
+      <div class="boot-mark" aria-hidden="true"></div><div class="boot-label">BOMBIT · v2.0</div>
+      <h1>泡泡准备中</h1><p id="boot-status">正在加载游戏代码…</p>
+      <progress id="boot-progress" value="0" max="100" aria-label="游戏加载进度"></progress>
+      <div class="boot-count"><span id="boot-detail">准备开始</span><span id="boot-percent">0%</span></div>
+      <button id="boot-retry" hidden onclick="location.reload()">重新加载</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var scripts = 0, scriptTotal = 26, resources = 0, resourceTotal = 20;
+      function show(detail) {
+        var bar = document.getElementById('boot-progress'); if (!bar) return;
+        var percent = Math.round((scripts + resources) / (scriptTotal + resourceTotal) * 100);
+        bar.value = percent;
+        document.getElementById('boot-percent').textContent = percent + '%';
+        document.getElementById('boot-detail').textContent = detail;
+      }
+      window.BombItBoot = { resources: function (done, total) {
+        if (!document.getElementById('boot')) return;
+        resources = done; resourceTotal = total;
+        document.getElementById('boot-status').textContent = done === total ? '准备就绪' : '正在准备角色与场景…';
+        show(done + ' / ' + total + ' 项画面资源');
+      } };
+      document.addEventListener('load', function (event) {
+        if (event.target.tagName !== 'SCRIPT' || !event.target.src) return;
+        scriptTotal = document.querySelectorAll('script[src]').length; scripts++;
+        show(scripts + ' / ' + scriptTotal + ' 项游戏代码');
+      }, true);
+      document.addEventListener('error', function (event) {
+        if (event.target.tagName !== 'SCRIPT' || !document.getElementById('boot')) return;
+        document.getElementById('boot-status').textContent = '游戏代码加载失败，请重试';
+        document.getElementById('boot-retry').hidden = false;
+      }, true);
+    })();
+  </script>
 
   <!-- 传统 script 标签：保证 file:// 双击直接可玩（ES module 会被 CORS 拦截） -->
-  <script src="assets/characters.js"></script>
-  <script src="src/core/config.js"></script>
-  <script src="src/core/rng.js"></script>
-  <script src="src/core/input.js"></script>
-  <script src="src/game/grid.js"></script>
-  <script src="src/game/levelgen.js"></script>
-  <script src="src/game/motion.js"></script>
-  <script src="src/game/rules.js"></script>
-  <script src="src/game/danger.js"></script>
-  <script src="src/game/entities.js"></script>
-  <script src="src/game/ai.js"></script>
-  <script src="src/game/match.js"></script>
-  <script src="src/render/draw.js"></script>
-  <script src="src/render/assets.js"></script>
-  <script src="src/render/effects.js"></script>
-  <script src="src/render/sprites.js"></script>
-  <script src="src/render/hud.js"></script>
-  <script src="src/audio/sfx.js"></script>
-  <script src="src/audio/music.js"></script>
-  <script src="src/scenes/menu.js"></script>
-  <script src="src/scenes/pause.js"></script>
-  <script src="src/scenes/result.js"></script>
-  <script src="src/main.js"></script>
+  <script defer src="assets/characters.js"></script>
+  <script defer src="src/core/config.js"></script>
+  <script defer src="src/core/rng.js"></script>
+  <script defer src="src/core/input.js"></script>
+  <script defer src="src/game/grid.js"></script>
+  <script defer src="src/game/levelgen.js"></script>
+  <script defer src="src/game/motion.js"></script>
+  <script defer src="src/game/rules.js"></script>
+  <script defer src="src/game/danger.js"></script>
+  <script defer src="src/game/entities.js"></script>
+  <script defer src="src/game/ai.js"></script>
+  <script defer src="src/game/match.js"></script>
+  <script defer src="src/game/engine.js"></script>
+  <script defer src="src/game/snapshot.js"></script>
+  <script defer src="src/game/observation.js"></script>
+  <script defer src="src/render/draw.js"></script>
+  <script defer src="src/render/assets.js"></script>
+  <script defer src="src/render/effects.js"></script>
+  <script defer src="src/render/sprites.js"></script>
+  <script defer src="src/render/hud.js"></script>
+  <script defer src="src/audio/sfx.js"></script>
+  <script defer src="src/audio/music.js"></script>
+  <script defer src="src/scenes/menu.js"></script>
+  <script defer src="src/scenes/pause.js"></script>
+  <script defer src="src/scenes/result.js"></script>
+  <script defer src="src/main.js"></script>
 </body>
 </html>

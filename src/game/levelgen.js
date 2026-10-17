@@ -461,11 +461,12 @@
         var correction = manual ? 0 : Math.min(1, distance / steps / Math.max(1, at.distance));
         var tx = next.x + offsetX * (1 - correction), ty = next.y + offsetY * (1 - correction);
         var ox = p.x, oy = p.y;
-        if (G.canStand(world.map, world.bombs, tx, ty, CFG.BOX, p.id)) { p.x = tx; p.y = ty; }
+        var canMove = p.isEnemy ? G.canMoveEnemy(world, p, tx, ty) : G.canStand(world.map, world.bombs, tx, ty, CFG.BOX, p.id);
+        if (canMove) { p.x = tx; p.y = ty; }
         else break; // 被炸弹封路时停下，不能穿过炸弹或中央设施。
         moved += Math.hypot(p.x - ox, p.y - oy);
       }
-      if (lm.theme === 'park') {
+      if (lm.theme === 'park' && !p.isEnemy) {
         p.carouselTravel = (p.carouselTravel || 0) + moved / CFG.TILE;
         if (p.carouselTravel >= lm.path.length - .01 && !p.carouselRewarded) {
           p.carouselRewarded = true; p.shield = 1;

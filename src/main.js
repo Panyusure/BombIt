@@ -17,8 +17,11 @@
   var canvas = document.getElementById('game');
   var ctx = canvas.getContext('2d');
   var bootEl = document.getElementById('boot');
+  var booting = !!bootEl;
+  var replayURL = new URL('../replay.html?embedded=1', document.currentScript.src).href;
+  canvas.tabIndex = -1;
 
-  var STEP = 1 / 60;
+  var STEP = BI.engine.STEP;
   var acc = 0, lastTs = 0;
   var fps = 60, fpsAcc = 0, fpsCount = 0;
 
@@ -30,6 +33,7 @@
     result: null,
     config: null,         // 本局配置（再来一局用）
     paused: false,
+    replayOpen: false,
     pause: null,          // 暂停菜单状态（暂停时才有）
     runtimeFault: null,
     errors: [],
@@ -55,102 +59,18 @@
   /* ============================================================
    * 世界构建
    * ============================================================ */
-  function makePlayer(id, label, color, spawnIndex, assetId) {
-    return {
-      id: id, keyId: id, name: label, color: color,
-      spawnIndex: spawnIndex,
-      assetId: assetId || BI.assets.defaultIdFor(id),
-      asset: null, charName: null,
-      x: 0, y: 0, px: 0, py: 0,
-      facing: 1, facingDir: 'down', moving: false, axisPref: 'x',
-      power: CFG.START_POWER, maxBombs: CFG.START_BOMBS, bombsOut: 0,
-      speedBonus: 0, shield: 0, starTime: 0, kick: false, glove: false, invuln: 0, squash: 0,
-      alive: true, deadAt: 0, lives: CFG.START_LIVES,
-      skillCd: 0, soulEvolved: false, soulBombs: 0, picked: {}, motion: null
-    };
-  }
-
-  function respawn(world, p) {
-    var sp = world.spawns[p.spawnIndex] || world.spawns[0];
-    p.x = G.centerX(sp[0]);
-    p.y = G.centerY(sp[1]);
-    p.px = p.x; p.py = p.y;
-    p.alive = true;
-    p.facing = 1; p.facingDir = 'down';
-    p.invuln = CFG.INVULN_TIME;
-    p.starTime = 0;
-    p.carouselTravel = 0;
-    BI.skills.reset(p);
-    p.moving = false;
-    p.squash = 0;
-  }
-
-  /** 清空场上一切临时物件（换回合 / 换关 / 重开用） */
-  function clearField(world) {
-    world.bombs.length = 0;
-    world.flames.length = 0;
-    world.poison = [];
-    world.items.length = 0;
-    if (world.enemies) world.enemies.length = 0;
-    world.time = 0;
-    world.timeStop = null;
-    world.skillEffects = [];
-    world.players.forEach(function (p) { p.carouselTravel = 0; p.carouselRewarded = false; BI.skills.resetLevel(p); });
-    world._aiField = null;
-    world._aiBreakField = null;
-    world._levelFxFired = false;
-    BI.fx.reset();
-  }
-
   function createWorld(cfg) {
-    var seedText = BI.randomSeed();
-    var rng = BI.makeRng(BI.hashSeed(seedText));
-    var spawns = [[1, 1], [CFG.COLS - 2, CFG.ROWS - 2]];
-    var mapMode = (cfg.mode === 'versus') ? 'versus'
-                : (cfg.mode === 'adventure') ? 'adventure' : 'dig';
-    var lvl = BI.levelgen.generate(rng, { mode: mapMode, spawns: spawns });
-
-    var w = {
-      mode: cfg.mode,                        // 'dig' | 'versus' | 'adventure'（玩法）
-      inputMode: cfg.inputMode,              // 'solo' | 'versus'（键位表）
-      label: cfg.label,
-      cfg: cfg,
-      altKeys: false,                        // 1P 备用键位开关
-      seedText: seedText,
-      map: lvl.map, theme: lvl.theme,
-      spawns: spawns,
-      degraded: lvl.degraded,
-      rng: rng,
-      time: 0,
-      bombs: [], flames: [], poison: [], items: [], players: [],
-      enemies: [],                           // 闯关模式的怪
-      danger: null,                          // 威胁图（AI 用，每帧重算）
-      burnItems: CFG.BURN_ITEMS,             // 爆炸会烧掉地上的道具（经典规则）
-      itemPool: 'core',                      // 常规五种道具；'full' 时额外加入踢弹
-      stats: { explosions: 0, kills: 0, maxChain: 0 },
-      match: null,
-
-      playerById: function (id) {
-        for (var i = 0; i < this.players.length; i++) if (this.players[i].id === id) return this.players[i];
-        return null;
-      },
-
+    var w = BI.engine.create(cfg);
+    var hooks = {
       onExplode: function (bomb, cells) {
-        w.stats.explosions++;
         SFX.play('explode');
         FX.explosion(bomb.cx, bomb.cy, cells);
       },
       onDeath: function (p) {
-        p.deadAt = w.time;
-        if (w.mode !== 'versus') R.changeLives(p, -1);  // 对战模式按回合算，不扣命
         SFX.play('death');
         FX.death(p.x, p.y);
-        // 只入队；真正的计分 / 判负由 match.update 统一批量结算，
-        // 这样同一帧死两个人也不会漏算（见 match.resolveDeaths）
-        MA.onDeath(w, p);
       },
       onEnemyDeath: function (e) {
-        w.stats.kills++;
         SFX.play('enemyDie');
         FX.enemyDeath(e.x, e.y, e.color);
         // 掉道具的规则在 rules.dropFromEnemy 里（属于游戏逻辑，不放这儿）
@@ -197,125 +117,34 @@
           colors: ['#ff9e5c', '#ffd166', '#ffffff']
         });
       },
-      onNewRound: function () { startNewRound(w); },
-      onNextLevel: function () { startNextLevel(w); },
       onSuddenDeath: function () { SFX.play('sudden'); }
     };
-
-    w.match = MA.create(cfg.mode);
-
-    var a1 = (cfg.chars && cfg.chars[0]) || BI.assets.defaultIdFor('p1');
-    w.players.push(makePlayer('p1', '1P', CFG.C.p1, 0, a1));
-    if (cfg.mode === 'versus') {
-      var a2 = (cfg.chars && cfg.chars[1]) || BI.assets.defaultIdFor('p2');
-      w.players.push(makePlayer('p2', '2P', CFG.C.p2, 1, a2));
-    }
-
-    for (var i = 0; i < w.players.length; i++) respawn(w, w.players[i]);
-
-    // 闯关模式：第一关的怪
-    if (cfg.mode === 'adventure') {
-      EN.spawn(w, EN.countFor(1), 1, rng);
-      EN.prepareBriefing(w);
-    }
-
-    MA.beginRound(w);
+    w.eventSink = function (type, args) {
+      if (type === 'field_reset') FX.reset();
+      if (hooks[type]) hooks[type].apply(null, args);
+    };
     return w;
   }
 
-  /** 闯关模式过关：换一张更难的地图继续，保留玩家的道具成长 */
-  function startNextLevel(w) {
-    var level = w.match.level;
-    var rng = BI.makeRng(BI.hashSeed(BI.randomSeed()));
-    var isBoss = level % CFG.BOSS_EVERY === 0;
-    var lvl = isBoss ? BI.levelgen.generateBoss(rng, w.theme) :
-      BI.levelgen.generate(rng, { mode: 'adventure', spawns: [[1, 1], [CFG.COLS - 2, CFG.ROWS - 2]], previousTheme: w.theme });
-    w.spawns = lvl.spawns;
-
-    w.map = lvl.map;
-    w.theme = lvl.theme;
-    w.rng = rng;
-    w.degraded = lvl.degraded;
-    w.seedText = BI.randomSeed();
-    clearField(w);
-
-    for (var i = 0; i < w.players.length; i++) {
-      var p = w.players[i];
-      // 火力 / 炸弹数 / 速度成长保留（设计方案 §4.6 的正反馈）
-      // 未使用的护盾保留到抵挡伤害；星星的临时效果在换关时结束。
-      R.changeLives(p, 1);   // 每过一关补一条命，上限统一读取配置
-      respawn(w, p);
-    }
-    EN.spawn(w, EN.countFor(level), level, rng);
-    MA.beginRound(w);
-    EN.prepareBriefing(w);
-  }
-
-  /** 对战模式打完一分：换一张地图重开本回合 */
-  function startNewRound(w) {
-    var rng = BI.makeRng(BI.hashSeed(BI.randomSeed()));
-    var lvl = BI.levelgen.generate(rng, { mode: 'versus', spawns: w.spawns, previousTheme: w.theme });
-    w.map = lvl.map;
-    w.theme = lvl.theme;
-    w.rng = rng;
-    w.degraded = lvl.degraded;
-    w.seedText = BI.randomSeed();
-    clearField(w);
-    w.match.round++;
-    for (var i = 0; i < w.players.length; i++) {
-      var p = w.players[i];
-      // 回合重开：道具成长清零，保证每局公平
-      p.power = CFG.START_POWER;
-      p.maxBombs = CFG.START_BOMBS;
-      p.speedBonus = 0;
-      p.shield = 0;
-      p.kick = false;
-      p.glove = false;
-      p.picked = {};
-      p.skillCd = 0;
-      respawn(w, p);
-    }
-    MA.beginRound(w);
-  }
+  function startNextLevel(w) { BI.engine.nextLevel(w); }
 
   /* ============================================================
    * 玩家推进
    * 移动与手感逻辑在 game/motion.js（不碰 DOM，可无头测试）
    * ============================================================ */
-  function updatePlayer(world, p, dt, km) {
-    if (p.squash > 0) p.squash = Math.max(0, p.squash - dt * 5);
-
-    if (!p.alive) {
-      p.moving = false;
-      if (MA.canRespawn(world, p) && (world.time - p.deadAt) > CFG.RESPAWN_DELAY) {
-        respawn(world, p);
-      }
-      return;
-    }
-
-    p.px = p.x; p.py = p.y;   // 记录上一逻辑帧位置，供渲染插值
-
-    var inp = BI.input, k = p.keyId;
-    var left = inp.held(km, k, 'left'), right = inp.held(km, k, 'right');
-    var up = inp.held(km, k, 'up'), down = inp.held(km, k, 'down');
-
-    // 一次只走一个轴（不许斜走）。两个方向同时按住时，
-    // 走「后按下的那个轴」—— 所以这里记录最近一次按下的是哪个轴。
-    if (inp.hit(km, k, 'left') || inp.hit(km, k, 'right')) p.axisPref = 'x';
-    if (inp.hit(km, k, 'up') || inp.hit(km, k, 'down')) p.axisPref = 'y';
-
-    var hx = (right ? 1 : 0) - (left ? 1 : 0);
-    var hy = (down ? 1 : 0) - (up ? 1 : 0);
-
-    if (hx || hy) {
-      p.aimX = hx && (!hy || p.axisPref !== 'y') ? hx : 0;
-      p.aimY = p.aimX ? 0 : hy;
-    }
-    p.moving = MO.step(world, p, hx, hy, dt);
-    if (inp.hit(km, k, 'skill')) BI.skills.cast(world, p);
-
-    if (inp.hit(km, k, 'bomb')) R.tryPlaceBomb(world, p);
-    if (p.kick || p.glove) MO.kickCheck(world, p, hx, hy);
+  function readActions(w) {
+    var inp = BI.input, km = inp.map(w.inputMode, w.altKeys), actions = {};
+    w.players.forEach(function (p) {
+      var k = p.keyId;
+      if (inp.hit(km,k,'left') || inp.hit(km,k,'right')) p.axisPref = 'x';
+      if (inp.hit(km,k,'up') || inp.hit(km,k,'down')) p.axisPref = 'y';
+      actions[p.id] = {
+        hx: (inp.held(km,k,'right') ? 1 : 0) - (inp.held(km,k,'left') ? 1 : 0),
+        hy: (inp.held(km,k,'down') ? 1 : 0) - (inp.held(km,k,'up') ? 1 : 0),
+        bomb: inp.hit(km,k,'bomb'), skill: inp.hit(km,k,'skill')
+      };
+    });
+    return actions;
   }
 
   /* ============================================================
@@ -346,30 +175,14 @@
       return;
     }
 
-    w.time += dt;
     // 结算等待期间只推进动画，避免通关后被残留炸弹扣命。
     if (w.match.over) {
+      w.time += dt;
       FX.update(dt);
       if (app.endAt > 0 && w.time >= app.endAt) showResult();
       return;
     }
-    var km = BI.input.map(w.inputMode, w.altKeys);
-
-    BI.skills.update(w, dt);
-    BI.scenery.update(w, dt);
-    for (var i = 0; i < w.players.length; i++) updatePlayer(w, w.players[i], dt, km);
-    DG.compute(w);
-    for (var e = 0; e < w.enemies.length; e++) AI.updateEnemy(w, w.enemies[e], dt);
-
-    R.updateBombs(w, dt);
-    R.updateFlames(w, dt);
-    R.updatePoison(w, dt);
-    R.updateItems(w, dt);
-    R.updateDamage(w, dt);
-    R.updateEnemies(w, dt);
-    EN.sweep(w);
-
-    MA.update(w, dt);
+    BI.engine.step(w, readActions(w), dt);
 
     // 过关：放一次彩带 + 音效（只在刚清场的那一帧触发）
     if (w.mode === 'adventure') {
@@ -428,7 +241,7 @@
       bossBattle: !!(w && w.map && w.map.bossBattle),
       bossAlive: EN.bossAlive(w)
     }));
-    MUSIC.setSuspended(app.paused);
+    MUSIC.setSuspended(app.paused || app.replayOpen);
   }
 
   /* ============================================================
@@ -526,6 +339,8 @@
    * ============================================================ */
   function update(dt) {
     if (MUSIC) { MUSIC.update(dt); syncMusic(); }
+    if (booting) return;
+    if (app.replayOpen) return;
     if (app.runtimeFault) {
       var recovery = BI.pause.update(app.pause, dt);
       if (recovery) handlePauseAction(recovery);
@@ -533,7 +348,8 @@
     }
     if (app.scene === 'menu') {
       var start = BI.menu.update(app.menu, dt);
-      if (start) startGame(start);
+      if (start && start.screen === 'replay') openReplay();
+      else if (start) startGame(start);
     } else if (app.scene === 'playing') {
       updatePlaying(dt);
     } else {
@@ -546,6 +362,30 @@
   /* ============================================================
    * 主循环
    * ============================================================ */
+  function openReplay() {
+    if (app.replayOpen) return;
+    var dialog = document.createElement('dialog'), viewer = document.createElement('iframe');
+    dialog.id = 'replay-dialog';
+    dialog.setAttribute('aria-label', 'Agent 对局回放');
+    dialog.style.cssText = 'position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#111723;overflow:hidden;';
+    viewer.title = 'Agent 对局回放播放器';
+    viewer.src = replayURL;
+    viewer.style.cssText = 'display:block;width:100%;height:100%;border:0;';
+    dialog.appendChild(viewer); document.body.appendChild(dialog);
+    function message(event) {
+      if (event.source === viewer.contentWindow && event.data?.type === 'bombit-replay-close') dialog.close();
+    }
+    window.addEventListener('message', message);
+    dialog.addEventListener('close', function () {
+      window.removeEventListener('message', message);
+      dialog.remove(); app.replayOpen = false; acc = 0;
+      BI.input.clear(); BI.input.endMouseFrame(); canvas.focus();
+    }, { once: true });
+    app.replayOpen = true;
+    BI.input.clear(); BI.input.endMouseFrame();
+    dialog.showModal();
+  }
+
   function frame(ts) {
     try {
       if (!lastTs) lastTs = ts;
@@ -684,20 +524,26 @@
     window.addEventListener('mousedown', unlockAudio);
     window.addEventListener('touchstart', unlockAudio);
 
+    BI.assets.onProgress = function (done, total) {
+      if (window.BombItBoot) window.BombItBoot.resources(done, total);
+      if (booting && done === total && total > 0) {
+        // 让浏览器先画出 100%，下一帧显示已经准备好的菜单。
+        requestAnimationFrame(function () { requestAnimationFrame(function () {
+          booting = false;
+          if (bootEl && bootEl.parentNode) bootEl.parentNode.removeChild(bootEl);
+          BI.input.clear(); BI.input.endMouseFrame();
+        }); });
+      }
+    };
     BI.assets.init();
     // 壁纸只装饰开始界面，异步加载；没到位（或文件缺失）时菜单用渐变背景顶上
     BI.assets.loadWallpaper(CFG.VIEW_W, CFG.VIEW_H, window.devicePixelRatio || 1);
+    BI.assets.onProgress(BI.assets.loading.done, BI.assets.loading.total);
     app.menu = BI.menu.create();
+    // 先同步画出可操作菜单，不等图片解码和第一个动画回调。
+    render(0);
+    if (window.performance && performance.mark) performance.mark('bombit-menu-ready');
     if (MUSIC) syncMusic();     // 先定下菜单曲，用户一交互就能立刻响
-
-    if (bootEl) {
-      bootEl.classList.add('hide');
-      // 过渡在某些环境里不推进（无头截图、系统关闭动效），文字会淡淡地糊在菜单上。
-      // 兜底：稍后直接把节点摘掉，反正它对游戏没有任何作用了。
-      setTimeout(function () {
-        if (bootEl.parentNode) bootEl.parentNode.removeChild(bootEl);
-      }, 600);
-    }
 
     requestAnimationFrame(frame);
 
@@ -725,26 +571,7 @@
           versus: '双人 · 同屏对战',
           adventure: '单人 · 闯关打怪'
         };
-        startGame({ mode: mode, inputMode: inputMode, label: labels[mode] || mode, chars: [null, null] });
-        if (seed) {
-          var rng = BI.makeRng(BI.hashSeed(seed));
-          var mapMode = (mode === 'versus') ? 'versus'
-                      : (mode === 'adventure') ? 'adventure' : 'dig';
-          var lvl = BI.levelgen.generate(rng, { mode: mapMode, spawns: app.world.spawns });
-          app.world.map = lvl.map;
-          app.world.theme = lvl.theme;
-          app.world.rng = rng;
-          app.world.seedText = seed;
-          // 地图换了，敌人得按新地图重新撒一遍
-          if (mode === 'adventure') {
-            EN.clear(app.world);
-            EN.spawn(app.world, EN.countFor(app.world.match.level),
-                     app.world.match.level, rng);
-            app.world.seenEnemies = {};
-            EN.prepareBriefing(app.world);
-          }
-          MA.beginRound(app.world);
-        }
+        startGame({ mode: mode, inputMode: inputMode, label: labels[mode] || mode, chars: [null, null], seed: seed });
         return app.world;
       },
 

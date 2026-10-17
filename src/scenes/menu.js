@@ -30,12 +30,14 @@
   var LABEL_X = 30, ITEMS_X = 152, ITEMS_W = 548;
   var ROW_GAP = 26, MODE_H = 78, CHAR_H = 86;
   var BTN = { w: 268, h: 56, y: 566 };
+  var REPLAY_BTN = { x: 558, y: 22, w: 142, h: 38 };
 
   function itemW(count) { return (ITEMS_W - ROW_GAP * (count - 1)) / count; }
 
   var menu = BI.menu = {
 
     MODES: MODES,
+    REPLAY_BUTTON: REPLAY_BTN,
 
     create: function () {
       var chars = menu.charList();
@@ -112,6 +114,10 @@
 
       /* ---- 鼠标点击 ---- */
       if (M.clicked) {
+        if (inp.hitRect(REPLAY_BTN.x, REPLAY_BTN.y, REPLAY_BTN.w, REPLAY_BTN.h)) {
+          BI.sfx.play('menuConfirm');
+          return { screen: 'replay' };
+        }
         if (st.hover) {
           var hr = st.hover.row, hi = st.hover.index;
           if (st.focus === hr && menu.currentIndex(st, hr) === hi) {
@@ -249,6 +255,14 @@
       }
 
       menu.drawBg(ctx, st);
+
+      // 观战入口独立于模式与角色选择，不会开新对局。
+      var replayHover = BI.mouse.inside && BI.input.hitRect(REPLAY_BTN.x, REPLAY_BTN.y, REPLAY_BTN.w, REPLAY_BTN.h);
+      D.blob(ctx, REPLAY_BTN.x, REPLAY_BTN.y, REPLAY_BTN.w, REPLAY_BTN.h, 11,
+        replayHover ? '#d3f4e4' : '#b4e4ce', 'rgba(255,255,255,.28)', 1);
+      D.text(ctx, '▶  对局回放', REPLAY_BTN.x + REPLAY_BTN.w / 2, REPLAY_BTN.y + REPLAY_BTN.h / 2, {
+        font: 'bold 14px "Microsoft YaHei", sans-serif', align: 'center', baseline: 'middle', fill: '#15352d'
+      });
 
       // 标题
       var bob = Math.sin(st.t * 2) * 3;

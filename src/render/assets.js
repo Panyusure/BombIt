@@ -34,14 +34,23 @@
     total: 0,
     done: 0,
     failures: [],
+    loading: { done: 0, total: 0 },
+    settled: {},
+    onProgress: null,
     wallpaper: { ok: false, canvas: null, img: null, file: WALLPAPER.file },
 
     /** 读取配置并把所有图片挂上加载回调 */
     init: function () {
+      if (this.order.length) return;
+      this.loading.total += Object.keys(ENEMY_ART).length + Object.keys(BI.CHARACTERS?.characters || {}).length;
       var owner = this;
       Object.keys(ENEMY_ART).forEach(function (id) {
         var def = ENEMY_ART[id], art = { img: new Image(), crop: def.crop, ok: false };
-        art.img.onload = function () { art.ok = art.img.naturalWidth > 0; };
+        art.img.onload = function () {
+          art.ok = art.img.naturalWidth > 0;
+          owner.settle('enemy:' + id);
+        };
+        art.img.onerror = function () { owner.settle('enemy:' + id); };
         art.img.src = ART_BASE + def.file;
         owner.enemySprites[id] = art;
       });
@@ -84,11 +93,13 @@
           a.sprite = sprite;
           a.ok = true;
           self.done++;
+          self.settle('character:' + id);
         };
         a.img.onerror = function () {
           a.ok = false;
           self.done++;
           self.failures.push(a.name + '(' + a.image + ')');
+          self.settle('character:' + id);
           if (window.console) {
             console.warn('[素材] 加载失败，将回退成几何占位小人：' + a.image);
           }
@@ -104,6 +115,12 @@
         self.order.push(id);
       });
       this.total = this.order.length;
+    },
+
+    settle: function (key) {
+      if (this.settled[key]) return;
+      this.settled[key] = true; this.loading.done++;
+      if (this.onProgress) this.onProgress(this.loading.done, this.loading.total);
     },
 
     readyEnemy: function (id) {
@@ -132,6 +149,7 @@
      * ============================================================ */
     loadWallpaper: function (viewW, viewH, dpr) {
       var wallpaper = this.wallpaper, img = new Image();
+      if (!wallpaper.img) this.loading.total++;
       wallpaper.img = img;
 
       img.onload = function () {
@@ -146,10 +164,12 @@
         pen.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, cv.width, cv.height);
         wallpaper.canvas = cv;
         wallpaper.ok = true;
+        assets.settle('wallpaper');
       };
 
       img.onerror = function () {
         wallpaper.ok = false;
+        assets.settle('wallpaper');
         if (window.console) {
           console.warn('[素材] 开始界面壁纸加载失败，回退渐变背景：' + WALLPAPER.file);
         }

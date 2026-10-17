@@ -15,6 +15,9 @@
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    // A saved match resumes the random stream instead of starting it again.
+    fn.getState = function () { return a >>> 0; };
+    fn.setState = function (state) { a = state >>> 0; return fn; };
     /** [0, n) 整数 */
     fn.int = function (n) { return Math.floor(fn() * n); };
     /** [min, max] 整数 */

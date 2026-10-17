@@ -39,7 +39,7 @@
         cx: c, cy: r,
         power: Math.min(CFG.MAX_POWER, p.power),
         fuse: CFG.FUSE,
-        fuseTotal: CFG.FUSE,   // 倒计时环按各自的引信总长来算，敌人的更长
+        fuseTotal: CFG.FUSE,   // 玩家与敌方共用同一引信总长
         ownerId: p.id,
         passFor: world.players.filter(function (o) {
           return o.alive && Math.hypot(o.x - G.centerX(c), o.y - G.centerY(r)) < CFG.BOMB_RADIUS + CFG.PLAYER_BOMB_RADIUS;
@@ -533,7 +533,7 @@
         if (target.soulSlowTime > 0 && target.soulSlowRate > effect.rate) return;
         target.soulSlowRate = effect.rate; target.soulSlowTime = effect.duration;
         target.soulSlowOwnerId = p.id;
-        target.soulSlowAssistUntil = world.time + Math.max(effect.duration, 4.2 + CFG.FLAME_TIME);
+        target.soulSlowAssistUntil = world.time + Math.max(effect.duration, CFG.FUSE + CFG.FLAME_TIME);
       });
       var effects = world.skillEffects || (world.skillEffects = []);
       effects.push({ type: 'soulPulse', x: G.centerX(c), y: G.centerY(r), radius: effect.radius,

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BombIt · Agent 对局回放</title>
+<link rel="stylesheet" href="replay/style.css">
+</head>
+<body>
+<main>
+  <a id="back-to-game" class="back-link" href="index.html">← 返回游戏</a>
+  <header>
+    <div><p class="eyebrow">BOMBIT · REPLAY</p><h1>Agent 对局回放</h1><p id="filename">选择一份回放，看看 agent 如何走到最后。</p></div>
+    <label class="file-button">打开回放文件<input id="file" type="file" accept=".json,application/json"></label>
+  </header>
+  <div id="notice" role="status">可直接拖入 .replay.json 或会话 JSON 文件，所有处理都在本机完成。</div>
+  <section class="layout">
+    <div class="viewer">
+      <div class="screen"><canvas id="game" width="720" height="696" aria-label="对局回放画面"></canvas><div id="empty">拖入回放文件<br><small>或点击右上角「打开回放文件」</small></div></div>
+      <div class="controls">
+        <div class="transport"><button id="restart" disabled title="回到开局">重看</button><button id="back" disabled title="后退五秒">−5 秒</button><button id="play" class="primary" disabled>播放</button><button id="forward" disabled title="快进五秒">+5 秒</button><button id="step" disabled>逐帧</button><button id="action" disabled>下一步动作</button><label>速度 <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option></select></label></div>
+        <input id="timeline" type="range" min="0" max="1" value="0" step="1" disabled aria-label="回放进度">
+        <div class="time-row"><span id="clock">0:00 / 0:00</span><span id="action-count">动作 0 / 0</span><span id="frame-count">帧 0</span></div>
+      </div>
+      <p class="hint">空格：播放／暂停 · ← →：前后 5 秒 · 拖动进度或点击关卡可跳转</p>
+    </div>
+    <aside>
+      <div class="panel"><div class="panel-title">正在观看 <span id="verified" class="badge">尚未载入</span></div><h2 id="level">等待回放</h2><p id="character">—</p><div id="stats" class="stats"></div><p id="result"></p></div>
+      <div class="panel"><div class="panel-title">关卡与关键时刻</div><div id="markers" class="markers"><p class="muted">载入后可跳到换关、阵亡与结算时刻。</p></div></div>
+    </aside>
+  </section>
+</main>
+<script src="assets/characters.js"></script>
+<script src="src/core/config.js"></script><script src="src/core/rng.js"></script><script src="src/core/input.js"></script>
+<script src="src/game/grid.js"></script><script src="src/game/levelgen.js"></script><script src="src/game/motion.js"></script>
+<script src="src/game/rules.js"></script><script src="src/game/danger.js"></script><script src="src/game/entities.js"></script>
+<script src="src/game/ai.js"></script><script src="src/game/match.js"></script><script src="src/game/engine.js"></script>
+<script src="src/game/snapshot.js"></script><script src="src/game/observation.js"></script>
+<script src="src/render/draw.js"></script><script src="src/render/assets.js"></script><script src="src/render/effects.js"></script>
+<script src="src/render/sprites.js"></script><script src="src/render/hud.js"></script>
+<script src="replay/core.js"></script><script src="replay/view.js"></script>
+</body>
+</html>

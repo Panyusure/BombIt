@@ -962,7 +962,7 @@ group('13. 敌人 AI：走位 / 躲炸弹 / 追人 / 放弹');
       const b = w.bombs[0];
       ok(b.cx === 5 && b.cy === 7, '炸弹放在它自己那一格', `(${b.cx},${b.cy})`);
       ok(b.byEnemy === true, '标记成敌人放的');
-      ok(b.fuse > CFG.FUSE, '敌人炸弹引信更长，给玩家反应时间',
+      ok(b.fuse <= CFG.FUSE && b.fuse > CFG.FUSE - .1 && b.fuseTotal === CFG.FUSE, '敌我炸弹共用引信长度',
          b.fuse.toFixed(1) + ' vs ' + CFG.FUSE);
       ok(b.ownerId === e.id, '归属正确');
     }
@@ -1184,7 +1184,7 @@ group('15. 页面装配：三份 HTML 的模块清单必须一致');
   function scriptsOf(file) {
     const html = fsx.readFileSync(path.join(ROOTD, file), 'utf8');
     const out = [];
-    const re = /<script\s+src="([^"]+)"/g;
+    const re = /<script\b[^>]*\bsrc="([^"]+)"/g;
     let m;
     while ((m = re.exec(html)) !== null) {
       // 归一化：把 ../ 之类的前缀去掉，只留下 src/... 或 assets/...
@@ -1227,6 +1227,9 @@ group('15. 页面装配：三份 HTML 的模块清单必须一致');
     'src/game/entities.js',
     'src/game/ai.js',
     'src/game/match.js',
+    'src/game/engine.js',
+    'src/game/snapshot.js',
+    'src/game/observation.js',
     'src/render/draw.js',
     'src/render/assets.js',
     'src/render/effects.js',
@@ -1681,7 +1684,7 @@ group('18. 炸弹：范围预览与实际爆炸一致 / 道具会被烧掉');
     ok(setOf(geo.cells).indexOf('5,5') >= 0, '连锁炸弹那一格在预览范围里');
   }
 
-  // ④ 引信总长分开记（敌人的引信更长，倒计时环才不会算错）
+  // ④ 敌我共用引信总长，倒计时显示与实际规则一致
   {
     const w = makeWorld(emptyMap(), [makePlayer('p1', 5, 5)]);
     R.tryPlaceBomb(w, w.players[0]);
@@ -1691,8 +1694,8 @@ group('18. 炸弹：范围预览与实际爆炸一致 / 道具会被烧掉');
     w.enemies.push(e);
     AI.placeBomb(w, e, 5, 7);
     const eb = w.bombs[w.bombs.length - 1];
-    ok(eb.fuseTotal > CFG.FUSE && eb.fuseTotal === eb.fuse,
-       '敌人炸弹的 fuseTotal 和自己的引信一致（比玩家的长）',
+    ok(eb.fuseTotal === CFG.FUSE && eb.fuseTotal === eb.fuse,
+       '敌人炸弹的 fuseTotal 和玩家相同',
        `${eb.fuse} / ${eb.fuseTotal}`);
   }
 
@@ -2611,7 +2614,7 @@ group('29. 未来：放弹6次或击杀通灵 / 减速与原速度逃生判断')
   ok(Math.abs(corner.x-startX-baseSpeed*CFG.TILE*.2*.25)<.00001&&corner.speed===baseSpeed,
     '实际怪物移动只剩25%，不改变永久速度或道具加成');
   const escape=future(),runner=EN.create('gugu',8,7,1);escape.w.enemies=[runner];
-  const trial={cx:8,cy:7,power:1,fuse:3.6,ownerId:runner.id};
+  const trial={cx:8,cy:7,power:1,fuse:CFG.FUSE,ownerId:runner.id};
   const routeBefore=AI.findEscape(escape.w,runner,trial);runner.soulSlowTime=3;runner.soulSlowRate=.75;
   const routeAfter=AI.findEscape(escape.w,runner,trial);
   ok(routeBefore&&JSON.stringify(routeBefore)===JSON.stringify(routeAfter),'减速不计入逃生计算，原速度判断与路径保持一致');
@@ -2645,7 +2648,7 @@ group('29. 未来：放弹6次或击杀通灵 / 减速与原速度逃生判断')
     ok(!target.alive&&!noCredit.p.soulEvolved&&!noCredit.p.soulBombs,'无归属击杀不触发通灵：'+owner);
   }
   const assisted=future(),slowed=EN.create('gugu',6,5,1);assisted.w.enemies=[slowed];
-  R.tryPlaceBomb(assisted.w,assisted.p);assisted.w.bombs=[];assisted.w.time=3.6;
+  R.tryPlaceBomb(assisted.w,assisted.p);assisted.w.bombs=[];assisted.w.time=CFG.FUSE+.1;
   SK.update(assisted.w,2.1);R.detonate(assisted.w,{cx:6,cy:5,power:1,ownerId:slowed.id});R.updateEnemies(assisted.w,dt);
   ok(assisted.p.soulEvolved&&slowed.killedBy==='p1','减速战术击杀同样算未来的击杀，直接通灵');
   const expired=future(),late=EN.create('gugu',6,5,1);expired.w.enemies=[late];R.tryPlaceBomb(expired.w,expired.p);

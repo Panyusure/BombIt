@@ -1,6 +1,6 @@
 # Q版泡泡堂 · BombIt
 
-![version](https://img.shields.io/badge/version-v1.0-5ec8f0)
+![version](https://img.shields.io/badge/version-v2.0-5ec8f0)
 
 一个用 **HTML5 Canvas + 原生 JavaScript** 写的 Q 版炸弹人对战小游戏：单人闯关打怪、单人计时拆砖、双人同屏对战，共六位精灵角色、十关冒险、三张主题地图。
 
@@ -8,11 +8,15 @@
 
 作者：**初霁**
 
+**v2.0 · Agent 接入泡泡堂**：通过 CLI / JSONL 观察局面、提交动作、自动游玩；支持内存模式、批量动作与格子寻路。人类可从开始菜单右上角的「对局回放」观看 Agent 对局。详见 [v2.0 更新说明](docs/releases/v2.0.md) 与 [Agent 接入手册](docs/CLI与Agent.md)。
+
+启动时显示真实加载进度，原始高清素材准备完成后进入菜单。
+
 > **使用范围**：本项目仅供个人学习与娱乐使用，请勿商用盈利。角色与敌人等第三方素材的权利归原权利人所有。
 
 > **在线游玩**：[GitHub Pages](https://panyusure.github.io/BombIt/)
 >
-> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v1.0.zip`，解压后双击里面的 `启动游戏.bat` 即可。
+> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v2.0.zip`，解压后双击里面的 `启动游戏.bat` 即可。
 > 也可以直接 `git clone` 本仓库，双击 `index.html` —— 两种方式都不需要安装任何东西。
 
 ![开始界面](docs/screenshot-menu.png)
@@ -73,11 +77,32 @@
 └── aqcs/                     原始素材投放处（图鉴原图、壁纸原图；第三方素材，未纳入版本库）
 ```
 
+## CLI 与 Agent 游玩
+
+新增无需浏览器的 CLI，支持全部三种模式、六位角色、JSON 局面、按帧动作、自动存档和确定性回放。仅需 Node.js 18+，无需安装依赖。等待输入时游戏暂停，agent 可以从容观察和决策。
+
+```powershell
+$game = node cli/bombit.cjs new --agent codex --mode adventure --seed demo --json | ConvertFrom-Json
+$session = $game.session
+node cli/bombit.cjs state --session $session --json
+node cli/bombit.cjs act --session $session --bomb --frames 1 --json
+node cli/bombit.cjs act --session $session --move down --frames 12 --json
+```
+
+- 人在终端玩：双击 `启动CLI.bat`，或 `npm run play`。
+- 运行示例 agent：`node examples/agent.cjs`，通过 JSONL 独立完成一局拆砖并验证回放。
+- Agent 高速接入：`node cli/bombit.cjs serve --memory`，免去逐步落盘；`batch` 一次提交动作数组，`path` 提交相邻格路线，`goTo` 自动走到指定格。需要恢复点时用 `checkpoint`，结束时用 `finish`。
+- Agent 接入协议、双人控制与存档说明：[CLI 与 Agent 使用说明](docs/CLI与Agent.md)。
+- 在游戏内观看 agent 对局：点击开始菜单右上角「对局回放」，选择或拖入回放 JSON；「返回游戏」保留菜单选择。也可双击 `观看回放.bat` 打开最近一局，支持调速、进度跳转和关卡标记。
+- 对局结算自动只留 `data/replays/` 中一个规范命名回放；中止时执行 `finish --session 对局名 --json`。临时数据统一进入 `.bombit/tmp/`，测试成功自动清理。目录与命名规则见 [本地数据说明](data/README.md) 和 [Agent 约定](AGENTS.md)。
+
 ## 跑测试
 
 ```
 运行测试.bat          :: 逻辑测试 + 浏览器测试（需装 Node 和 Edge/Chrome）
 node tests\headless.js  :: 只跑逻辑测试
+npm test              :: 逻辑测试 + CLI 测试 + agent 完整通关
+npm run test:browser   :: 浏览器测试
 ```
 
 无头逻辑测试覆盖地图生成与连通性、爆炸与连锁、敌人 AI、威胁图、移动手感、赛制判定、技能与通灵等；浏览器测试覆盖键位表、真实键盘与鼠标事件、场景状态机、渲染与缩放、运行期零报错。

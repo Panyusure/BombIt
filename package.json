@@ -1,0 +1,17 @@
+{
+  "name": "bombit-cli",
+  "version": "2.0.0",
+  "private": true,
+  "description": "BombIt shared browser/CLI game engine with a deterministic agent protocol",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "node tests/run.cjs",
+    "test:cli": "node --test tests/cli.cjs tests/fast-cli.cjs",
+    "test:browser": "node tests/run-browser.cjs",
+    "play": "node cli/bombit.cjs play",
+    "agent": "node examples/agent.cjs",
+    "watch": "node cli/watch.cjs",
+    "test:replay-browser": "node tests/run-browser.cjs --replay",
+    "test:startup": "node tests/startup-browser.cjs"
+  }
+}

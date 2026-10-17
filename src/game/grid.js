@@ -81,6 +81,19 @@
       return true;
     },
 
+    // A monster may leave its own newly placed bomb, but cannot move back
+    // toward it or re-enter it after clearing the blast-body collision radius.
+    canMoveEnemy: function (world, e, x, y) {
+      var radius = CFG.ENEMY_BOX / 2 + CFG.BOMB_RADIUS;
+      var blockers = world.bombs.filter(function (b) {
+        var pos = grid.bombPosition(b);
+        var before = Math.hypot(e.x - pos.x, e.y - pos.y);
+        var after = Math.hypot(x - pos.x, y - pos.y);
+        return !(b.ownerId === e.id && before < radius && after > before + 1e-9);
+      });
+      return grid.canStand(world.map, blockers, x, y, CFG.ENEMY_BOX, e.id);
+    },
+
     bombPosition: function (b) {
       return { x: Number.isFinite(b.x) ? b.x : grid.centerX(b.cx),
         y: Number.isFinite(b.y) ? b.y : grid.centerY(b.cy) };

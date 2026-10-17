@@ -101,11 +101,11 @@
       return Math.min(1 + 0.015 * (entities.difficultyLevel(level) - 1), 1.15);
     },
 
-    create: function (typeId, c, r, level) {
+    create: function (typeId, c, r, level, world) {
       var t = TYPES[typeId] || TYPES.gugu;
       var scale = entities.speedScale(level || 1);
       var e = {
-        id: 'e' + (nextId++),
+        id: 'e' + (world ? world.nextEntityId++ : nextId++),
         isEnemy: true,
         type: t.id,
         phase: t.id === 'boss' ? 1 : 0, phaseFlash: 0,
@@ -195,7 +195,8 @@
         var type = entities.pickType(rng, level, i);
         // 先留足撤离投弹的空间，再让怪物自行炸开外围障碍。
         entities.openSpawnPocket(world, cells[i][0], cells[i][1]);
-        world.enemies.push(entities.create(type, cells[i][0], cells[i][1], level));
+        if (!world.nextEntityId) world.nextEntityId = 1;
+        world.enemies.push(entities.create(type, cells[i][0], cells[i][1], level, world));
         made++;
       }
       return made;

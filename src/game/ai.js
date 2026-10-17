@@ -111,14 +111,26 @@
       e.px = e.x; e.py = e.y;
       EN.syncBossPhase(world, e);
       if (world.timeStop && world.timeStop.remaining > 0) { e.moving = false; return; }
-      if (e.stun > 0) { e.stun = Math.max(0, e.stun - dt); e.moving = false; return; }
+      // Environmental movement applies to every living enemy, including bosses.
+      // Park riders, like players, can walk off; the factory belt always pushes.
+      var carried = BI.scenery.carry(world, e, dt, !!(e.dir && e.moving && !e.stun && !e.windup));
+      if (carried) {
+        e.sceneryMotion = true;
+        if (e.dir) {
+          var c = G.col(e.x), r = G.row(e.y);
+          var passed = (G.centerX(e.tc) - e.x) * e.dir.x + (G.centerY(e.tr) - e.y) * e.dir.y < -.001;
+          var outside = !((c === e.fromC && r === e.fromR) || (c === e.tc && r === e.tr));
+          if (passed || outside) { e.dir = null; e.returning = false; }
+        }
+      }
+      if (e.stun > 0) { e.stun = Math.max(0, e.stun - dt); e.moving = carried; return; }
       e.phaseFlash = Math.max(0,(e.phaseFlash || 0)-dt);
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
       if (e.bombCd > 0) e.bombCd -= dt;
 
       if (e.ai === 'boss') ai.bossAbility(world, e, dt);
       if (e.windup > 0) {
-        e.windup = Math.max(0, e.windup - dt); e.moving = false;
+        e.windup = Math.max(0, e.windup - dt); e.moving = carried;
         if (e.windup > 0) return;
         var bc = G.col(e.x), br = G.row(e.y);
         if (ai.placeBomb(world, e, bc, br)) {
@@ -129,7 +141,7 @@
       }
       if (!e.dir) {
         ai.decide(world, e);
-        if (!e.dir) { e.moving = false; return; }   // 被堵死了，站着
+        if (!e.dir) { e.moving = carried; return; }   // 被堵死时仍可随场景运送
       }
 
       // 玩家可能在它移动途中封住下一格；回退到原来的格心重新规划。
@@ -142,6 +154,13 @@
       var tx = G.centerX(e.tc), ty = G.centerY(e.tr);
       var step = ai.moveSpeed(e) * CFG.TILE * dt;
       var dx = tx - e.x, dy = ty - e.y;
+
+      // A conveyor can move an actor off its original lane. Follow waypoints
+      // with real body collision until aligned again; never snap through walls.
+      if (e.sceneryMotion) {
+        ai.moveCarriedEnemy(world, e, tx, ty, step, carried);
+        return;
+      }
 
       if (Math.abs(dx) + Math.abs(dy) <= step) {
         // 到达目标格中心，立刻决定下一格
@@ -157,6 +176,32 @@
           e.y += (dy > 0 ? 1 : -1) * Math.min(step, Math.abs(dy));
         }
         e.moving = true;
+      }
+    },
+
+    moveCarriedEnemy: function (world, e, tx, ty, distance, carried) {
+      var moved = false;
+      // Align the cross-axis before continuing along the selected corridor.
+      var axes = e.dir.x ? ['y', 'x'] : ['x', 'y'];
+      for (var i = 0; i < axes.length && distance > 1e-9; i++) {
+        var axis = axes[i], delta = (axis === 'x' ? tx : ty) - e[axis];
+        var amount = Math.min(Math.abs(delta), distance);
+        var parts = Math.max(1, Math.ceil(amount / 2));
+        for (var n = 0; n < parts && amount > 1e-9; n++) {
+          var x = e.x, y = e.y, d = Math.sign(delta) * amount / parts;
+          if (axis === 'x') x += d; else y += d;
+          if (!G.canMoveEnemy(world, e, x, y)) {
+            e.dir = null; e.moving = carried || moved; return;
+          }
+          e.x = x; e.y = y; moved = true;
+          if (axis === 'x') e.facing = Math.sign(delta);
+        }
+        distance -= amount;
+      }
+      e.moving = carried || moved;
+      if (Math.abs(tx - e.x) + Math.abs(ty - e.y) < 1e-7) {
+        e.sceneryMotion = false;
+        ai.decide(world, e);
       }
     },
 
@@ -272,7 +317,7 @@
 
     /**
      * 投弹 NPC：接近到四格内时预备放弹，然后沿安全路线撤退。
-     * 普通炸弹引信 3.6 秒，两格火力引信 4.2 秒，给双方留撤离时间。
+     * 所有角色共用 CFG.FUSE；投弹前仍需确认能及时撤离。
      */
     bombStep: function (world, e, pool, c, r) {
       var p = ai.target(world, e);
@@ -341,7 +386,7 @@
       ai.apply(e, best); return true;
     },
 
-    fuseFor: function (e) { return e.power >= 2 ? 4.2 : 3.6; },
+    fuseFor: function () { return CFG.FUSE; },
 
     bossAbility: function (world, e, dt) {
       EN.syncBossPhase(world,e);
@@ -408,6 +453,12 @@
     findEscape: function (world, e, bomb, timeline) {
       timeline = timeline || DG.timeline(world, bomb);
       var c = G.col(e.x), r = G.row(e.y), duration = 1 / ai.planningSpeed(e) + 1 / 60;
+      // Grid travel times cannot promise a retreat while a faster belt carries
+      // the monster or its bomb. Only initiate a throw with an off-track route.
+      // Emergency evasion of existing bombs can still use every open cell.
+      var track = world.map.landmark && world.map.landmark.path || [];
+      function onTrack(c, r) { return track.some(function (cell) { return cell[0] === c && cell[1] === r; }); }
+      if (bomb && onTrack(c, r)) return null;
       var q = [{ c: c, r: r, t: 0, path: [] }], head = 0, visited = {};
       visited[c + ',' + r] = true;
       var p = ai.target(world, e);
@@ -422,6 +473,7 @@
         for (var i = 0; i < dirs.length; i++) {
           var d = dirs[i], nc = cur.c + d.x, nr = cur.r + d.y, key = nc + ',' + nr;
           if (!G.inBounds(nc, nr, world.map) || visited[key] || G.isWall(world.map, nc, nr)) continue;
+          if (bomb && onTrack(nc, nr)) continue;
           var arrival = cur.t + duration;
           // 整段移动都留有余量，不依赖擦着火焰边缘侥幸逃生。
           if (!ai.safeDuring(timeline, cur.c, cur.r, cur.t, arrival + .10) ||

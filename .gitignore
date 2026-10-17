@@ -20,6 +20,20 @@ __pycache__/
 # 运行期日志
 *.log
 
+# CLI sessions and generated agent playthroughs
+.bombit/
+.play/
+data/replays/*.replay.json
+
+# 本机保留的旧发布元数据、历史维护脚本和未使用的原始配乐，不随成品发布
+data/releases/
+tools/maintenance/
+assets/audio/开始菜单_watermark.mp3
+assets/audio/小怪关1.mp3
+assets/audio/小怪关2.mp3
+assets/audio/鲁鲁旦别捣蛋_曲子1.mp3
+assets/audio/鲁鲁旦别捣蛋_曲子2.mp3
+
 # 系统与编辑器
 Thumbs.db
 Desktop.ini

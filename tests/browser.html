@@ -35,6 +35,9 @@
 <script src="../src/game/entities.js"></script>
 <script src="../src/game/ai.js"></script>
 <script src="../src/game/match.js"></script>
+  <script src="../src/game/engine.js"></script>
+  <script src="../src/game/snapshot.js"></script>
+  <script src="../src/game/observation.js"></script>
 <script src="../src/render/draw.js"></script>
 <script src="../src/render/assets.js"></script>
 <script src="../src/render/effects.js"></script>
@@ -1610,6 +1613,53 @@ window.addEventListener('load', async function () {
     audioChecks.forEach(function (result) {
       ok(result.valid, result.id + ' 配乐文件可加载且格式受支持', result.detail);
     });
+
+    group('CLI 共享内核与浏览器输入一致');
+    ['dig', 'adventure', 'versus'].forEach(function (mode) {
+      var config = { mode: mode, seed: 'shared-engine-parity',
+        inputMode: mode === 'versus' ? 'versus' : 'solo', chars: ['xiaonuo', 'axiu'], label: mode };
+      D.startGame(config);
+      var visible = D.world, standalone = BI.engine.create(config);
+      visible.briefing = standalone.briefing = null;
+      var sequence = [
+        ['ArrowRight', { hx: 1 }, 12],
+        [mode === 'versus' ? 'Enter' : 'Space', { bomb: true }, 1],
+        ['ArrowDown', { hy: 1 }, 12],
+        [mode === 'versus' ? 'ShiftRight' : 'KeyQ', { skill: true }, 1]
+      ];
+      sequence.forEach(function (step) {
+        D.hold(step[0], step[2] / 60);
+        for (var tick = 0; tick < step[2]; tick++) {
+          var a = Object.assign({}, step[1]);
+          if (tick > 0) { a.bomb = false; a.skill = false; }
+          BI.engine.step(standalone, { p1: a }, BI.engine.STEP);
+        }
+      });
+      ok(JSON.stringify(BI.observe(visible, false)) === JSON.stringify(BI.observe(standalone, false)),
+        mode + ' 浏览器真实按键与无头动作得到同一局面');
+    });
+
+    group('开始菜单右上角：集成 Agent 回放');
+    D.gotoMenu();
+    var rememberedMenu = D.app.menu, beforeReplay = D.world && D.world.frame;
+    var replayButton = BI.menu.REPLAY_BUTTON;
+    ok(replayButton.x > CFG.VIEW_W / 2 && replayButton.y < 60 && replayButton.x + replayButton.w <= CFG.VIEW_W,
+      '回放入口位于开始菜单右上角，不遮挡模式和角色');
+    click(replayButton.x + replayButton.w/2, replayButton.y + replayButton.h/2); D.tick(1/60); unclick();
+    var replayDialog = document.getElementById('replay-dialog'), replayFrame = replayDialog && replayDialog.querySelector('iframe');
+    ok(D.app.replayOpen && replayDialog.open && /\/replay\.html\?embedded=1$/.test(replayFrame.src),
+      '点击入口在游戏内打开回放播放器');
+    key('keydown','Enter'); D.tick(.5); key('keyup','Enter');
+    ok(D.scene === 'menu' && D.app.menu === rememberedMenu && (!D.world || D.world.frame === beforeReplay),
+      '观看时冻结开始菜单，输入不会意外开局');
+    window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'bombit-replay-close'}}));
+    ok(replayDialog.open, '其他窗口的消息不会关闭播放器');
+    window.dispatchEvent(new MessageEvent('message',{source:replayFrame.contentWindow,data:{type:'bombit-replay-close'}}));
+    await new Promise(function(resolve){setTimeout(resolve,30);});
+    ok(!D.app.replayOpen && !document.getElementById('replay-dialog') && D.app.menu === rememberedMenu,
+      '返回游戏关闭播放器并保留模式与角色选择');
+    D.press('Enter',1/60);
+    ok(D.scene === 'playing', '从回放返回后仍可正常开始游戏');
 
     /* ---------- 18. 全程零报错 ---------- */
     group('18. 运行期报错');
