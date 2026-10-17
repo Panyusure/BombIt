@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Q版泡泡堂 · BombIt</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 50% 30%, #4a5a8a 0%, #232a44 60%, #161a2c 100%);
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+  #stage {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #game {
+    display: block;
+    border-radius: 14px;
+    box-shadow: 0 18px 60px rgba(0,0,0,.55), 0 0 0 3px rgba(255,255,255,.09);
+    image-rendering: auto;
+    touch-action: none;
+  }
+  #boot {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 18px; letter-spacing: 2px; pointer-events: none;
+    opacity: 1;
+    /* visibility 兜底：万一浏览器没跑过渡（无头截图 / 减少动效设置），
+       也保证它一定会消失，不会糊在画面上 */
+    transition: opacity .35s ease, visibility 0s .35s;
+  }
+  #boot.hide { opacity: 0; visibility: hidden; }
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="game"></canvas></div>
+  <div id="boot">载入中…</div>
+
+  <!-- 传统 script 标签：保证 file:// 双击直接可玩（ES module 会被 CORS 拦截） -->
+  <script src="assets/characters.js"></script>
+  <script src="src/core/config.js"></script>
+  <script src="src/core/rng.js"></script>
+  <script src="src/core/input.js"></script>
+  <script src="src/game/grid.js"></script>
+  <script src="src/game/levelgen.js"></script>
+  <script src="src/game/motion.js"></script>
+  <script src="src/game/rules.js"></script>
+  <script src="src/game/danger.js"></script>
+  <script src="src/game/entities.js"></script>
+  <script src="src/game/ai.js"></script>
+  <script src="src/game/match.js"></script>
+  <script src="src/render/draw.js"></script>
+  <script src="src/render/assets.js"></script>
+  <script src="src/render/effects.js"></script>
+  <script src="src/render/sprites.js"></script>
+  <script src="src/render/hud.js"></script>
+  <script src="src/audio/sfx.js"></script>
+  <script src="src/audio/music.js"></script>
+  <script src="src/scenes/menu.js"></script>
+  <script src="src/scenes/pause.js"></script>
+  <script src="src/scenes/result.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

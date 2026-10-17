@@ -1,0 +1,28 @@
+# aqcs/ 只放第三方原始素材（《奥奇传说》图鉴原图、壁纸原图），不进版本库，
+# 只保留一份说明让目录结构完整。换素材时把图丢进 aqcs/ 即可，tools/extract_characters.py 从那里读。
+aqcs/*
+!aqcs/README.md
+
+# 打包产物：发给朋友的压缩包不进版本库（要分发走 Releases / 网盘）
+*.zip
+
+# 本地临时目录（打包暂存、解压校验）
+.pack/
+.verify/
+
+# 本机专用的小工具（如推送助手），不进仓库
+推送到GitHub.bat
+
+# Python
+__pycache__/
+*.pyc
+
+# 运行期日志
+*.log
+
+# 系统与编辑器
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/

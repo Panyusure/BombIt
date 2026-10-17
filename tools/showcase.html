@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>BombIt 演示场景（生成截图用）</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#232a44}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #game{display:block;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.55)}
+  #boot{display:none}
+  #err{position:fixed;left:0;top:0;right:0;margin:0;padding:6px;z-index:9;
+       color:#7fffb0;background:rgba(0,0,0,.9);font:12px Consolas,monospace;white-space:pre-wrap}
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="game"></canvas></div>
+  <div id="boot"></div>
+
+<!-- 与 index.html 保持一致的加载顺序 -->
+<script src="../assets/characters.js"></script>
+<script>
+  /* 这个页面在 tools/ 下，比 index.html 深一层，素材图片路径要补一层 ../。
+     必须在 main.js 的 boot() 之前执行（boot 走 DOMContentLoaded，
+     而这个内联脚本在解析阶段就跑完了）。 */
+  (function () {
+    var cfg = window.BI && window.BI.CHARACTERS;
+    if (!cfg || !cfg.characters) return;
+    Object.keys(cfg.characters).forEach(function (id) {
+      var c = cfg.characters[id];
+      if (c.image && c.image.indexOf('../') !== 0) c.image = '../' + c.image;
+    });
+  })();
+</script>
+<script src="../src/core/config.js"></script>
+<script src="../src/core/rng.js"></script>
+<script src="../src/core/input.js"></script>
+<script src="../src/game/grid.js"></script>
+<script src="../src/game/levelgen.js"></script>
+<script src="../src/game/motion.js"></script>
+<script src="../src/game/rules.js"></script>
+<script src="../src/game/danger.js"></script>
+<script src="../src/game/entities.js"></script>
+<script src="../src/game/ai.js"></script>
+<script src="../src/game/match.js"></script>
+<script src="../src/render/draw.js"></script>
+<script src="../src/render/assets.js"></script>
+<script src="../src/render/effects.js"></script>
+<script src="../src/render/sprites.js"></script>
+<script src="../src/render/hud.js"></script>
+<script src="../src/audio/sfx.js"></script>
+<script src="../src/audio/music.js"></script>
+<script src="../src/scenes/menu.js"></script>
+<script src="../src/scenes/pause.js"></script>
+<script src="../src/scenes/result.js"></script>
+<script src="../src/main.js"></script>
+
+<script>
+/* ============================================================
+ * 演示场景：确定性摆出各个画面，用来生成文档截图。
+ *
+ *   msedge --headless=new --screenshot=out.png --virtual-time-budget=4000 ^
+ *          "tools/showcase.html?scene=menu"
+ *
+ * 可用 scene： menu / menu-versus / dig / versus / result-win / result-lose
+ *
+ * 注意：headless 浏览器几乎不触发 rAF，所以必须用 BI.debug.tick()
+ * 手动推进逻辑；光等着的话世界时间是 0，画面是静止的初始状态。
+ * ============================================================ */
+window.addEventListener('load', function () {
+  var el = document.createElement('pre');
+  el.id = 'err';
+  document.body.appendChild(el);
+
+  var scene = (location.search.match(/scene=([\w-]+)/) || [])[1] || 'versus';
+
+  try {
+    var D = window.BI.debug, CFG = window.BI.config, BI = window.BI;
+
+    function fillItems(w, want) {
+      var placed = 0;
+      for (var r = 2; r < CFG.ROWS - 2 && placed < want.length; r++) {
+        for (var c = 2; c < CFG.COLS - 2 && placed < want.length; c++) {
+          if (w.map[r * CFG.COLS + c] !== 0) continue;
+          if ((c + r) % 3 !== 0) continue;
+          w.items.push({ c: c, r: r, type: want[placed], born: 0 });
+          placed++;
+        }
+      }
+    }
+
+    /* 摆一个"双方各扔一颗、走到火焰窗口"的对战画面 */
+    function stageVersus(seed) {
+      D.quickStart('versus', seed);
+      D.tick(0.2);
+      D.press('Enter');                       // 1P 放弹
+      D.press('Space');                       // 2P 放弹
+      D.hold('ArrowRight', 0.35);
+      D.hold('ArrowLeft', 0.30);
+      D.hold('KeyA', 0.35);
+      D.hold('KeyW', 0.30);
+      fillItems(D.world, ['fire', 'bomb', 'speed', 'shield', 'kick']);
+      // 炸弹放于 t≈0.22，引信 2.4s -> 2.62 爆，火焰 0.45s；
+      // 前面已推进 ≈1.53s，再推 1.25s 落在火焰窗口中段
+      D.tick(1.25);
+    }
+
+    switch (scene) {
+      case 'bomb':
+        // 炸弹还在地上烧引信的那一刻：范围预览 + 倒计时环 + 秒数
+        D.quickStart('dig', 'SHOWBOMB');
+        D.tick(0.2);
+        D.press('Space');                     // 放一颗
+        D.hold('ArrowRight', 0.42);           // 走开一点
+        D.hold('ArrowDown', 0.30);
+        BI.fx.reset();                        // 别让粒子挡住炸弹
+        D.tick(0.85);                         // 引信还剩约 1.5 秒
+        break;
+
+      case 'bomb-brick':
+        // 炸弹紧挨着软砖：预览里那一格会被标成「会被炸开」
+        D.quickStart('dig', 'SHOWBRICK');
+        D.tick(0.3);
+        // 找一块旁边有空地的软砖，把玩家挪过去炸它
+        (function () {
+          var w = D.world, CG = CFG.COLS, RG = CFG.ROWS;
+          for (var r = 1; r < RG - 1; r++) {
+            for (var c = 1; c < CG - 1; c++) {
+              if (w.map[r * CG + c] !== 2) continue;
+              var nb = [[c - 1, r], [c + 1, r], [c, r - 1], [c, r + 1]];
+              for (var k = 0; k < 4; k++) {
+                if (w.map[nb[k][1] * CG + nb[k][0]] !== 0) continue;
+                var p = w.players[0];
+                p.x = BI.grid.centerX(nb[k][0]);
+                p.y = BI.grid.centerY(nb[k][1]);
+                p.invuln = 99;
+                BI.rules.tryPlaceBomb(w, p);
+                return;
+              }
+            }
+          }
+        })();
+        BI.fx.reset();
+        D.tick(0.7);
+        break;
+
+      case 'pause':
+        D.quickStart('adventure', 'SHOWPAUSE'); D.press('Enter');
+        D.tick(0.4);
+        D.app.paused = true;
+        D.app.pause = BI.pause.create();
+        D.app.pause.info = '第 1 关　·　剩余敌人 3';
+        D.tick(0.5);                 // 放完入场动画
+        D.app.pause.index = 0;
+        break;
+
+      case 'adventure':
+        D.quickStart('adventure', 'SHOWADV'); D.press('Enter');
+        D.tick(0.3);
+        D.press('Space');                     // 玩家放一颗
+        D.hold('ArrowRight', 0.30);
+        D.hold('ArrowDown', 0.25);
+        D.tick(1.2);                          // 敌人开始躲
+        break;
+
+      case 'adventure-danger':
+        D.quickStart('adventure', 'SHOWADV'); D.press('Enter');
+        D.tick(0.3);
+        D.press('Space');
+        D.tick(0.9);
+        D.world.players[0].assetId = 'xiaotian'; BI.skills.cast(D.world, D.world.players[0]); // 展示小天的洞察技能
+        break;
+
+      case 'menu':
+        D.gotoMenu();
+        D.tick(0.6);
+        break;
+
+      case 'menu-versus':
+        D.gotoMenu();
+        D.app.menu.modeIndex = 1;
+        BI.menu.layout(D.app.menu);
+        D.tick(0.6);
+        break;
+
+      case 'dig':
+        D.quickStart('dig', 'SHOWDIG');
+        D.tick(0.2);
+        D.press('Space');
+        D.hold('ArrowRight', 0.45);
+        D.hold('ArrowDown', 0.45);
+        fillItems(D.world, ['fire', 'bomb', 'speed', 'shield']);
+        D.tick(1.6);                          // 金引信刚烧完，火焰还在
+        break;
+
+      case 'result-win':
+        stageVersus('SHOWWIN');
+        D.world.match.scores.p1 = 2;
+        BI.match.settle(D.world, 'p1');
+        D.tick(CFG.RESULT_DELAY + 0.6);
+        D.tick(0.8);                          // 让入场动画放完
+        break;
+
+      case 'result-lose':
+        D.quickStart('dig', 'SHOWLOSE');
+        D.tick(0.3);
+        D.world.match.remaining = 0.05;
+        D.tick(0.2);
+        D.tick(CFG.RESULT_DELAY + 0.6);
+        D.tick(0.8);
+        break;
+
+      case 'versus':
+      default:
+        stageVersus('SHOW01');
+        break;
+    }
+
+    D.render(1);
+
+    var s = D.world ? D.snapshot() : null;
+    el.textContent = '场景 ' + scene + ' 就绪' +
+      (s ? ('  t=' + s.time + '  炸弹=' + s.bombs + '  火焰=' + s.flames +
+            '  软砖=' + s.bricksLeft) : '') +
+      '  scene=' + D.scene + '  ' + BI.assets.status();
+  } catch (e) {
+    el.textContent = '演示场景出错: ' + (e && e.stack);
+  }
+});
+</script>
+</body>
+</html>

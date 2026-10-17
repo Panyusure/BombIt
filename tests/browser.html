@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>BombIt browser tests</title>
+<style>
+  body{margin:0;background:#111;color:#ddd;font:13px/1.6 Consolas,monospace}
+  #out{white-space:pre-wrap;padding:8px}
+  #stage{position:fixed;left:-9999px;top:0}
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="game"></canvas></div>
+  <pre id="out">running…</pre>
+
+<script>
+  // 固定帧由测试显式推进，避免素材加载或机器帧率影响断言。
+  window.__frameQueue = [];
+  window.requestAnimationFrame = function (callback) { window.__frameQueue.push(callback); return window.__frameQueue.length; };
+  window.__errs = [];
+  window.addEventListener('error', function (e) {
+    window.__errs.push((e.message || e.type) + ' @' + (e.filename || '?') + ':' + (e.lineno || '?'));
+  });
+</script>
+
+<script src="../assets/characters.js"></script>
+<script src="../src/core/config.js"></script>
+<script src="../src/core/rng.js"></script>
+<script src="../src/core/input.js"></script>
+<script src="../src/game/grid.js"></script>
+<script src="../src/game/levelgen.js"></script>
+<script src="../src/game/motion.js"></script>
+<script src="../src/game/rules.js"></script>
+<script src="../src/game/danger.js"></script>
+<script src="../src/game/entities.js"></script>
+<script src="../src/game/ai.js"></script>
+<script src="../src/game/match.js"></script>
+<script src="../src/render/draw.js"></script>
+<script src="../src/render/assets.js"></script>
+<script src="../src/render/effects.js"></script>
+<script src="../src/render/sprites.js"></script>
+<script src="../src/render/hud.js"></script>
+<script src="../src/audio/sfx.js"></script>
+<script src="../src/audio/music.js"></script>
+<script src="../src/scenes/menu.js"></script>
+<script src="../src/scenes/pause.js"></script>
+<script src="../src/scenes/result.js"></script>
+<script src="../src/main.js"></script>
+
+<script>
+/* ============================================================
+ * 浏览器端测试：只测 Node 测不到的东西 ——
+ *   DOM/Canvas 接线、真实键盘事件、按模式切换的键位表、
+ *   场景状态机、菜单导航、鼠标点击、音频解锁、渲染不抛异常
+ * 用 --dump-dom 把结果抓回终端
+ * ============================================================ */
+window.addEventListener('load', function () {
+  var lines = [], pass = 0, fail = 0;
+
+  function ok(cond, label, detail) {
+    if (cond) { pass++; lines.push('PASS  ' + label); }
+    else { fail++; lines.push('FAIL  ' + label + (detail ? '  →  ' + detail : '')); }
+  }
+  function group(t) { lines.push(''); lines.push('── ' + t + ' ──'); }
+
+  var BI = window.BI, D = BI.debug, CFG = BI.config, G = BI.grid;
+
+  function key(type, code) {
+    window.dispatchEvent(new KeyboardEvent(type, { code: code, bubbles: true }));
+  }
+  function bricks() { return BI.match.countBricks(D.world.map); }
+  function bombOwners() {
+    return D.world.bombs.map(function (b) { return b.ownerId; }).sort().join(',');
+  }
+  function click(x, y) {
+    BI.mouse.x = x; BI.mouse.y = y; BI.mouse.inside = true; BI.mouse.clicked = true;
+  }
+  function unclick() { BI.mouse.inside = false; BI.mouse.clicked = false; }
+
+  try {
+    /* ---------- 0. 音乐：加载完就尝试播放（不等用户交互） ---------- */
+    // 这一段必须放在最前面：后面所有测试都会发键盘事件，
+    // 那是"用户交互"，会把这里要验的「未交互时的行为」冲掉。
+    group('0. 音乐：刷新即尝试播放，而不是等点击');
+    ok(!!BI.music && BI.music.failed === false, 'music.js 已装载且浏览器支持 Audio',
+       BI.music ? BI.music.status() : 'missing');
+    ok(BI.music.id === 'menu', 'boot() 就把菜单曲点好了（天空之城）', String(BI.music.id));
+    ok((BI.music.el && BI.music.el.paused === false) || BI.music.blocked === true || BI.music.ready === true,
+       '加载后立刻调了 play()：要么在播，要么被浏览器策略拦下', BI.music.status());
+    ok(BI.music.el.loop === true, '菜单曲是循环播放的');
+    ok(typeof BI.music.waiting() === 'boolean',
+       'waiting() 供 main.js 判断还要不要继续监听交互补播');
+
+    /* ---------- 1. 键位表：按模式绑定，绝不写死 ---------- */
+    group('1. 键位表（同一玩家在不同模式下放弹键不同）');
+    var kSolo = BI.input.map('solo', false);
+    var kVersus = BI.input.map('versus', false);
+    var kAlt = BI.input.map('solo', true);
+
+    ok(kSolo.p1.bomb === 'Space', '单人：1P 放弹 = 空格', kSolo.p1.bomb);
+    ok(BI.input.codes(kSolo.p1.up).indexOf('ArrowUp') >= 0 &&
+       BI.input.codes(kSolo.p1.left).indexOf('ArrowLeft') >= 0, '单人：1P 用方向键移动');
+    ok(BI.input.codes(kSolo.p1.up).indexOf('KeyW') >= 0 &&
+       BI.input.codes(kSolo.p1.down).indexOf('KeyS') >= 0 &&
+       BI.input.codes(kSolo.p1.left).indexOf('KeyA') >= 0 &&
+       BI.input.codes(kSolo.p1.right).indexOf('KeyD') >= 0, '单人：1P 也可以用 WASD 移动');
+    ok(kVersus.p1.bomb === 'Enter', '双人：1P 放弹 = Enter（不是空格）', kVersus.p1.bomb);
+    ok(kVersus.p2.bomb === 'Space', '双人：2P 放弹 = 空格', kVersus.p2.bomb);
+    ok(kVersus.p2.up === 'KeyW' && kVersus.p2.left === 'KeyA' &&
+       kVersus.p2.down === 'KeyS' && kVersus.p2.right === 'KeyD', '双人：2P 用 WASD 移动');
+    ok(kVersus.p1.up === 'ArrowUp' && BI.input.codes(kVersus.p1.up).indexOf('KeyW') < 0,
+       '双人：1P 不绑 WASD（WASD 是 2P 的，不能串台）');
+    ok(kVersus.p2.bomb !== kVersus.p1.bomb, '双人：两个玩家的放弹键不冲突');
+    ok(BI.input.codes(kAlt.p1.up).indexOf('KeyI') >= 0 && kAlt.p1.bomb === 'KeyU',
+       '备用键位（键盘无冲兜底）可切换');
+
+    /* ---------- 2. 场景状态机 ---------- */
+    group('2. 场景状态机 menu -> playing -> result');
+    ok(D.scene === 'menu', '启动后停在开始界面', D.scene);
+    D.quickStart('dig', 'SCN01');
+    ok(D.scene === 'playing', '开局后进入对局', D.scene);
+    ok(D.world.mode === 'dig', '对局模式是计时拆砖', D.world.mode);
+    ok(D.world.match.remaining > 0, '倒计时已启动', String(D.world.match.remaining));
+
+    /* ---------- 3. 单人模式键盘实测 ---------- */
+    group('3. 单人模式：空格放弹 / Enter 不该放弹');
+    D.quickStart('dig', 'SOLO01');
+    D.tick(0.2);
+    D.press('Space');
+    ok(D.world.bombs.length === 1, '单人按【空格】放下了炸弹', 'bombs=' + D.world.bombs.length);
+    ok(bombOwners() === 'p1', '炸弹归属 1P', bombOwners());
+
+    D.quickStart('dig', 'SOLO02');
+    D.tick(0.2);
+    D.press('Enter');
+    ok(D.world.bombs.length === 0, '单人按【Enter】不会放炸弹（键位不串台）',
+       'bombs=' + D.world.bombs.length);
+    D.press('Space');
+    ok(D.world.bombs.length === 1, '单人：Enter 之后按空格照样能放弹', 'bombs=' + D.world.bombs.length);
+
+    /* ---------- 3b. 单人模式：WASD 与方向键并存 ---------- */
+    group('3b. 单人模式：WASD 也能移动，且不抢放弹键');
+    D.quickStart('dig', 'SOLO_WASD');
+    D.tick(0.2);
+    (function () {
+      var w = D.world, p = w.players[0];
+      // 清出一片空地，测的才是"能不能走"而不是"有没有路"
+      for (var r = 1; r <= 8; r++) for (var c = 1; c <= 12; c++) G.set(w.map, c, r, BI.T.EMPTY);
+      w.bombs = []; (w.enemies || []).forEach(function (e) { e.stun = 999; });
+      p.x = p.px = G.centerX(4); p.y = p.py = G.centerY(4); p.axisPref = 'x';
+
+      var x0 = p.x;
+      D.hold('KeyD', 0.4);
+      ok(p.x > x0 + 1, '单人按【D】向右走动', 'dx=' + (p.x - x0).toFixed(1));
+      ok(w.bombs.length === 0, 'D 只负责移动，不会顺手放弹（放弹键仍是空格）', 'bombs=' + w.bombs.length);
+
+      var y0 = p.y, x1 = p.x;
+      D.hold('KeyW', 0.4);
+      ok(p.y < y0 - 1, '单人按【W】向上走动', 'dy=' + (p.y - y0).toFixed(1));
+      ok(Math.abs(p.x - x1) < 0.01, 'W 只沿 y 轴走，不是斜走', 'dx=' + (p.x - x1).toFixed(2));
+
+      var y1 = p.y;
+      D.hold('KeyS', 0.4);
+      ok(p.y > y1 + 1, '单人按【S】向下走动', 'dy=' + (p.y - y1).toFixed(1));
+      var x2 = p.x;
+      D.hold('KeyA', 0.4);
+      ok(p.x < x2 - 1, '单人按【A】向左走动', 'dx=' + (p.x - x2).toFixed(1));
+
+      // 方向键没有被顶掉
+      p.axisPref = 'x';
+      var y2 = p.y, x3 = p.x;
+      D.hold('ArrowRight', 0.4);
+      ok(p.x > x3 + 1, '方向键依然能移动（两套键位并存）', 'dx=' + (p.x - x3).toFixed(1));
+      p.axisPref = 'y';
+      D.hold('ArrowUp', 0.4);
+      ok(p.y < y2 - 1, '方向键上依然能移动', 'dy=' + (p.y - y2).toFixed(1));
+
+      // 一个动作绑两个键：松开其中一个，另一个还按着就要继续走
+      p.axisPref = 'x';
+      key('keydown', 'ArrowRight'); key('keydown', 'KeyD');
+      D.tick(0.2);
+      key('keyup', 'KeyD');
+      var x4 = p.x;
+      D.tick(0.3);
+      key('keyup', 'ArrowRight');
+      ok(p.x > x4 + 1, '方向键和 D 同时按住时，松开 D 方向键立刻接管（不卡住）',
+         'dx=' + (p.x - x4).toFixed(1));
+      ok(!BI.input.isDown('KeyD') && !BI.input.isDown('ArrowRight'), '两个键都已松开，按键状态清干净');
+
+      // 单人模式里 WASD 只有移动这一个身份，不能顺带放弹/施法
+      var cd0 = p.skillCd || 0;
+      D.press('KeyS');
+      ok(w.bombs.length === 0 && (p.skillCd || 0) === cd0,
+         '按 S 只负责移动，不会顺带放弹或施法', 'bombs=' + w.bombs.length + ' cd=' + (p.skillCd || 0));
+    })();
+    // HUD 键位提示必须把两套移动键都报出来，否则玩家按 WASD 走动了会以为串键
+    (function () {
+      var texts = [], realText = BI.draw.text;
+      BI.draw.text = function (ctx, t) { texts.push(String(t)); return realText.apply(this, arguments); };
+      try { D.render(1); } finally { BI.draw.text = realText; }
+      ok(texts.some(function (t) { return t.indexOf('方向键') >= 0 && t.indexOf('WASD') >= 0; }),
+         '单人 HUD 同时标出「方向键 / WASD」',
+         texts.filter(function (t) { return t.indexOf('移动') >= 0; }).join(' | '));
+    })();
+
+    /* ---------- 4. 双人模式键盘实测 ---------- */
+    group('4. 双人模式：1P=Enter，2P=空格');
+    D.quickStart('versus', 'VERS01');
+    D.tick(0.2);
+    ok(D.world.players.length === 2, '双人模式创建了 2 个玩家');
+
+    D.press('Enter');
+    ok(D.world.bombs.length === 1 && bombOwners() === 'p1', '双人：按【Enter】= 1P 放弹',
+       'bombs=' + bombOwners());
+    D.press('Space');
+    ok(D.world.bombs.length === 2 && bombOwners() === 'p1,p2',
+       '双人：按【空格】= 2P 放弹（两颗各归各家）', 'bombs=' + bombOwners());
+
+    D.quickStart('versus', 'VERS02');
+    D.tick(0.2);
+    var p1x0 = D.world.players[0].x, p2x0 = D.world.players[1].x;
+    D.hold('ArrowRight', 0.4);
+    var p1Moved = D.world.players[0].x - p1x0;
+    var p2MovedAfter1P = D.world.players[1].x - p2x0;
+    D.hold('KeyA', 0.4);
+    var p2Moved = D.world.players[1].x - p2x0;
+    ok(p1Moved > 0, '1P 按方向键右走动了', 'dx=' + p1Moved.toFixed(1));
+    ok(Math.abs(p2MovedAfter1P) < 0.01, '1P 操作不会带着 2P 一起动', 'dx=' + p2MovedAfter1P.toFixed(2));
+    ok(p2Moved < 0, '2P 按 A 键向左走动了', 'dx=' + p2Moved.toFixed(1));
+
+    /* ---------- 5. 菜单导航 ---------- */
+    group('5. 菜单：选模式 / 选角色');
+    D.gotoMenu();
+    var M0 = D.app.menu;
+    ok(BI.menu.MODES.length === 3, '一共有三种模式', String(BI.menu.MODES.length));
+    ok(BI.menu.MODES[0].id === 'adventure', '第 1 张卡是闯关打怪');
+    ok(BI.menu.MODES[1].id === 'dig', '第 2 张卡是计时拆砖');
+    ok(BI.menu.MODES[2].id === 'versus', '第 3 张卡是双人对战');
+    ok(M0.rows.length === 2, '单人模式下菜单有 2 行（模式 + 1P 角色）', String(M0.rows.length));
+    ok(M0.modeIndex === 0, '默认选中第 1 张卡', String(M0.modeIndex));
+
+    D.press('ArrowRight');
+    ok(D.app.menu.modeIndex === 1, '按 → 切到第 2 张卡', String(D.app.menu.modeIndex));
+    ok(D.app.menu.rows.length === 2, '计时拆砖也是单人，还是 2 行', String(D.app.menu.rows.length));
+
+    D.press('ArrowRight');
+    ok(D.app.menu.modeIndex === 2, '再按 → 切到双人模式', String(D.app.menu.modeIndex));
+    ok(D.app.menu.rows.length === 3, '双人模式下多出 2P 角色行', String(D.app.menu.rows.length));
+
+    D.press('ArrowLeft');
+    ok(D.app.menu.modeIndex === 1, '按 ← 切回第 2 张卡');
+    ok(D.app.menu.rows.length === 2, '行数跟着变回 2 行', String(D.app.menu.rows.length));
+
+    D.press('ArrowDown');
+    ok(D.app.menu.focus === 1, '按 ↓ 把焦点移到角色行', String(D.app.menu.focus));
+    var beforeChar = D.app.menu.charIndex[0];
+    D.press('ArrowRight');
+    ok(D.app.menu.charIndex[0] !== beforeChar || D.app.menu.chars.length === 1,
+       '按 → 能换 1P 角色', beforeChar + ' -> ' + D.app.menu.charIndex[0]);
+
+    // 从菜单真的能开双人对战
+    D.gotoMenu();
+    var mv = D.app.menu;
+    mv.modeIndex = 2;
+    mv.focus = 0;
+    BI.menu.layout(mv);
+    D.press('Enter');
+    ok(D.scene === 'playing' && D.world.mode === 'versus', '在菜单选中双人卡能开对战',
+       D.scene + '/' + (D.world && D.world.mode));
+    ok(D.world.players.length === 2, '双人模式有 2 个玩家');
+
+    // 选中的角色要真的带进游戏
+    D.gotoMenu();
+    var mm = D.app.menu;
+    mm.modeIndex = 0;
+    BI.menu.layout(mm);
+    mm.focus = 1;
+    var pick = mm.chars.length - 1;
+    BI.menu.setIndex(mm, 1, pick);
+    var expectId = mm.chars[pick].id;
+    D.press('Enter');
+    ok(D.scene === 'playing', '在菜单按 Enter 能开局', D.scene);
+    ok(D.world.players[0].assetId === expectId, '菜单选的角色带进了游戏',
+       String(expectId) + ' vs ' + String(D.world.players[0].assetId));
+
+    /* ---------- 6. 端到端：拆砖模式胜负 ---------- */
+    group('6. 端到端 · 单人计时拆砖');
+    D.quickStart('dig', 'DIG01');
+    D.tick(0.2);
+    ok(bricks() > 0, '开局有软砖', bricks() + ' 块');
+    ok(!D.world.match.over, '开局没结束');
+
+    var map = D.world.map;
+    for (var i = 0; i < map.length; i++) if (map[i] === 2) map[i] = 0;
+    D.tick(0.1);
+    ok(D.world.match.over === true, '软砖清空后比赛结束');
+    ok(D.world.match.winner === 'p1', '判玩家获胜', String(D.world.match.winner));
+    ok(D.world.match.title==='挑战完成', '完成挑战时标题统一', D.world.match.title);
+
+    D.tick(CFG.RESULT_DELAY + 0.3);
+    ok(D.scene === 'result', '延迟后自动弹出结算界面', D.scene);
+
+    D.quickStart('dig', 'DIG02');
+    D.tick(0.2);
+    D.world.match.remaining = 0.05;
+    D.tick(0.2);
+    ok(D.world.match.over && D.world.match.winner === 'p2', '时间到判负', String(D.world.match.winner));
+    ok(D.world.match.title==='时间结束', '计时结束时标题统一', D.world.match.title);
+
+    /* ---------- 7. 端到端：对战模式胜负 ---------- */
+    group('7. 端到端 · 双人同屏对战');
+    D.quickStart('versus', 'VS01');
+    D.tick(0.2);
+    ok(D.world.match.scores.p1 === 0 && D.world.match.scores.p2 === 0, '开局 0:0');
+
+    BI.match.onDeath(D.world, D.world.players[0]);
+    D.tick(0.1);
+    ok(D.world.match.scores.p2 === 1, '1P 阵亡后 2P 得 1 分',
+       JSON.stringify(D.world.match.scores));
+    ok(D.scene === 'playing', '才 1 分，还在打');
+    ok(D.world.match.roundEndsAt > 0, '进入回合间隔');
+
+    D.tick(CFG.ROUND_RESTART_DELAY + 0.3);
+    ok(D.world.match.round === 2, '自动进入第 2 回合', String(D.world.match.round));
+    ok(D.world.players[0].alive === true, '1P 已重生');
+
+    BI.match.onDeath(D.world, D.world.players[0]);
+    D.tick(0.1);
+    ok(D.world.match.over === true, '拿到第 2 分后比赛结束');
+    ok(D.world.match.winner === 'p2', '2P 获胜', String(D.world.match.winner));
+    ok(/2P/.test(D.world.match.title), '标题报出获胜方', D.world.match.title);
+
+    D.tick(CFG.RESULT_DELAY + 0.3);
+    ok(D.scene === 'result', '对战结束也弹结算界面', D.scene);
+
+    /* ---------- 8. 端到端：闯关打怪 ---------- */
+    group('8. 端到端 · 单人闯关打怪');
+    D.quickStart('adventure', 'ADV01');
+    D.press('Enter');
+    D.tick(0.2);
+    ok(D.world.mode === 'adventure', '开的是闯关模式', D.world.mode);
+    ok(D.world.match.level === 1, '从第 1 关开始');
+    var foeCount = BI.match.countEnemies(D.world);
+    ok(foeCount === BI.entities.countFor(1), '敌人数量和关卡对应', foeCount + ' 只');
+    ok(D.world.danger !== null, '威胁图已经算出来了');
+
+    var e0 = D.world.enemies[0];
+    var ex0 = e0.x, ey0 = e0.y;
+    D.tick(1.0);
+    ok(e0.x !== ex0 || e0.y !== ey0, '敌人自己会走',
+       '(' + ex0.toFixed(1) + ',' + ey0.toFixed(1) + ') -> (' +
+       e0.x.toFixed(1) + ',' + e0.y.toFixed(1) + ')');
+
+    D.press('Space');
+    ok(D.world.bombs.length === 1, '玩家放下了炸弹');
+    D.tick(0.4);
+    var hot = 0;
+    D.world.enemies.forEach(function (en) {
+      if (BI.danger.isHot(D.world, BI.grid.col(en.x), BI.grid.row(en.y))) hot++;
+    });
+    ok(hot === 0, '放了炸弹之后的 0.4 秒内，没有敌人还站在威胁区里', hot + ' 只还在危险区');
+
+    D.quickStart('adventure', 'ADV02');
+    D.press('Enter');
+    D.tick(0.2);
+    var beforeLevel = D.world.match.level;
+    D.world.enemies.length = 0;
+    D.tick(0.2);
+    ok(D.world.match.levelClearAt > 0, '清场后进入等待', String(D.world.match.levelClearAt));
+    D.tick(CFG.LEVEL_CLEAR_DELAY + 0.4);
+    ok(D.world.match.level === beforeLevel + 1, '自动进入下一关', String(D.world.match.level));
+    ok(BI.match.countEnemies(D.world) > 0, '新关卡重新撒了敌人',
+       BI.match.countEnemies(D.world) + ' 只');
+    ok(D.world.players[0].alive === true, '玩家在新关卡正常出生');
+
+    D.quickStart('adventure', 'ADV03');
+    D.press('Enter');
+    D.tick(0.2);
+    D.world.players[0].lives = 0;
+    BI.match.onDeath(D.world, D.world.players[0]);
+    D.tick(0.2);
+    ok(D.world.match.over === true, '命用光比赛结束');
+    D.tick(CFG.RESULT_DELAY + 0.3);
+    ok(D.scene === 'result', '弹出结算界面', D.scene);
+
+    /* ---------- 9. 结算界面 ---------- */
+    group('9. 结算界面');
+    D.tick(0.6);
+    var summary = D.app.result.summary;
+    ok(!!summary, '结算界面拿到了统计数据');
+    ok(summary.level >= 1, '闯关结算带关卡数', String(summary.level));
+    ok(summary.players.length === 1, '单人模式统计里有一名玩家');
+
+    D.press('Enter');
+    ok(D.scene === 'playing', '结算界面按 Enter 能再来一局', D.scene);
+    ok(D.world.match.level === 1, '再来一局从第 1 关重新开始', String(D.world.match.level));
+
+    // 回菜单
+    D.quickStart('dig', 'R01');
+    var m2 = D.world.map;
+    for (var k = 0; k < m2.length; k++) if (m2[k] === 2) m2[k] = 0;
+    D.tick(CFG.RESULT_DELAY + 0.4);
+    ok(D.scene === 'result', '又进了结算');
+    D.tick(0.6);
+    D.press('Escape');
+    ok(D.scene === 'menu', '结算界面按 Esc 回菜单', D.scene);
+
+    /* ---------- 10. 鼠标操作 ---------- */
+    group('10. 鼠标：点开始按钮 / 点菜单项');
+    D.gotoMenu();
+    click(CFG.VIEW_W / 2, 566 + 28);
+    D.tick(1 / 60);
+    unclick();
+    ok(D.scene === 'playing', '点「开始游戏」按钮能开局', D.scene);
+
+    D.gotoMenu();
+    var MM = D.app.menu;
+    MM.modeIndex = 0; BI.menu.layout(MM);
+    var modeItems = BI.menu.itemsOf(MM, MM.rows[0]);
+    click(modeItems[1].x + modeItems[1].w / 2, modeItems[1].y + modeItems[1].h / 2);
+    D.tick(1 / 60);
+    unclick();
+    ok(MM.modeIndex === 1, '点第二张模式卡能选中它', String(MM.modeIndex));
+    [2,0,2,1,0].forEach(function(mode){
+      var card=BI.menu.itemsOf(MM,MM.rows[0])[mode];
+      click(card.x+card.w/2,card.y+card.h/2);D.tick(1/60);unclick();D.render(1);
+      var count=mode===2?2:1;
+      ok(D.scene==='menu'&&MM.rows.filter(function(row){return row.type==='char';}).length===count,
+        '鼠标切换模式 '+mode+' 立即显示 '+count+' 条选角栏');
+      ok(MM.rows.every(function(row,i){return i===0||row.y>=MM.rows[i-1].y+MM.rows[i-1].h;}),
+        '模式 '+mode+' 选角卡片不重叠');
+    });
+
+    /* ---------- 11. 音效 ---------- */
+    group('11. 音效：解锁 / 播放 / 静音');
+    ok(typeof window.AudioContext !== 'undefined' ||
+       typeof window.webkitAudioContext !== 'undefined',
+       '浏览器提供了 AudioContext');
+
+    // 模拟一次真实用户交互来解锁音频（浏览器自动播放策略要求）
+    key('keydown', 'ShiftLeft');
+    key('keyup', 'ShiftLeft');
+    ok(BI.sfx.failed === false, '音频没有落入「不可用」状态', String(BI.sfx.failed));
+    ok(BI.sfx.ready === true, '交互之后音频被成功解锁', BI.sfx.status());
+    ok(!!(BI.sfx.ctx && BI.sfx.master), 'AudioContext 与主音量节点都建好了');
+    ok(!!(BI.sfx.noiseBuf && BI.sfx.noiseBuf.length > 0), '白噪声缓冲已生成',
+       BI.sfx.noiseBuf ? String(BI.sfx.noiseBuf.length) : 'null');
+
+    var sNames = ['place', 'explode', 'enemyBomb', 'pickup', 'death', 'shieldBreak',
+                  'enemyHit', 'enemyDie', 'levelClear', 'win', 'lose',
+                  'menuMove', 'menuConfirm', 'pause', 'sudden', 'tick'];
+    var sThrew = null;
+    for (var si = 0; si < sNames.length; si++) {
+      try { BI.sfx._last = {}; BI.sfx.play(sNames[si]); }
+      catch (e) { sThrew = sNames[si] + ': ' + e.message; break; }
+    }
+    ok(sThrew === null, '全部 ' + sNames.length + ' 个音效都能真实合成且不抛异常', sThrew || '');
+
+    // 限流：同一音效 30ms 内不重复响
+    BI.sfx._last = {};
+    ok(BI.sfx.allow('explode') === true, '限流：第一次放行');
+    ok(BI.sfx.allow('explode') === false, '限流：紧接着第二次被拦下（连爆不会糊成一片）');
+
+    var muteBefore = BI.sfx.enabled;
+    D.quickStart('dig', 'MUTE1');
+    D.tick(0.1);
+    D.press('KeyM');
+    ok(BI.sfx.enabled === !muteBefore, '游戏里按 M 能静音', BI.sfx.status());
+    ok(BI.sfx.master.gain.value === 0, '静音后主音量归零', String(BI.sfx.master.gain.value));
+    D.press('KeyM');
+    ok(BI.sfx.enabled === muteBefore, '再按 M 恢复', BI.sfx.status());
+    ok(BI.sfx.master.gain.value > 0, '恢复后主音量回来', String(BI.sfx.master.gain.value));
+
+    /* ---------- 11B. 背景音乐：菜单 / 关卡 / BOSS 三首曲子 ---------- */
+    group('11B. 音乐：三首 ogg 随场景切换 / 暂停 / 静音');
+    var MUS = BI.music;
+    ok(!!MUS && MUS.failed === false, '音乐模块可用（浏览器提供了 Audio）',
+       MUS ? MUS.status() : 'music.js 没加载');
+
+    // 曲子路径必须由 music.js 自己的地址反推根目录：
+    // index.html 在根目录、tests/browser.html 深一层，写死相对路径总有一个页面找不到曲子
+    var levelSrc = MUS.srcFor('level');
+    ok(levelSrc.indexOf('/assets/audio/') > 0 && decodeURIComponent(levelSrc).indexOf('カノン') > 0,
+       '关卡曲路径按项目根目录拼出来（不依赖页面深度）', levelSrc);
+
+    D.gotoMenu();
+    D.tick(0.1);
+    ok(MUS.id === 'menu' && MUS.el && decodeURIComponent(MUS.el.src).indexOf('天空之城') > 0,
+       '菜单放天空之城', MUS.el ? MUS.el.src : 'no element');
+    ok(MUS.el.loop === true, '单曲循环播放');
+
+    D.quickStart('dig', 'MUS_DIG');
+    D.tick(0.1);
+    ok(MUS.id === 'level', '计时拆砖放カノン', MUS.id);
+    D.quickStart('versus', 'MUS_VS');
+    D.tick(0.1);
+    ok(MUS.id === 'level', '双人对战也放カノン', MUS.id);
+    D.quickStart('adventure', 'MUS_ADV');
+    D.tick(0.1);
+    ok(MUS.id === 'level', '闯关普通关放カノン', MUS.id);
+
+    D.startLevel(5);
+    D.press('Enter');
+    D.tick(0.1);
+    ok(D.world.map.bossBattle && MUS.id === 'boss', '第 5 关 BOSS 战换上欢乐斗地主', MUS.id);
+    ok(decodeURIComponent(MUS.el.src).indexOf('欢乐斗地主') > 0, 'BOSS 曲就是欢乐斗地主', MUS.el.src);
+
+    // 打死鲁鲁旦、小怪还没清完：音乐必须换回关卡曲（真实踩到过的 bug）
+    var bossEnt = D.world.enemies.filter(function (e) { return e.type === 'boss'; })[0];
+    var minions = D.world.enemies.filter(function (e) { return e.type !== 'boss'; });
+    BI.rules.killEnemy(D.world, bossEnt, 'p1');
+    ok(bossEnt && !bossEnt.alive && minions.length > 0 &&
+       minions.some(function (e) { return e.alive; }),
+       '测试前提：鲁鲁旦已死，场上还有活着的小怪', '小怪 ' + minions.length + ' 只');
+    D.tick(0.1);
+    ok(MUS.id === 'level', 'BOSS 死后小怪还在时音乐切回カノン，不再一直放斗地主', MUS.id);
+
+    D.startLevel(6);
+    D.press('Enter');
+    D.tick(0.1);
+    ok(!D.world.map.bossBattle && MUS.id === 'level', '打完 BOSS 回普通关换回カノン', MUS.id);
+    ok(MUS._els.menu && MUS._els.level && MUS._els.boss,
+       '三首曲子各建一个音频元素，切回来不重新下载');
+
+    // 暂停菜单：战场冻结，音乐也停住，回来接着放
+    D.press('Escape');
+    D.tick(0.1);
+    ok(D.app.paused === true && MUS.suspended === true && MUS.el.paused === true,
+       '暂停时音乐停住', MUS.status());
+    D.press('Escape');
+    D.tick(0.1);
+    ok(D.app.paused === false && MUS.suspended === false, '继续游戏后音乐恢复');
+
+    // 静音（M）对音乐同样有效
+    var volBefore = MUS.el.volume;
+    ok(volBefore > 0, '静音前音乐有音量（淡入进行中）', String(volBefore));
+    D.press('KeyM');
+    D.tick(0.05);
+    ok(MUS.el.volume === 0, '按 M 静音后音乐音量归零', String(MUS.el.volume));
+    D.press('KeyM');
+    D.tick(0.05);
+    ok(MUS.el.volume > 0, '再按 M 音乐音量回来', String(MUS.el.volume));
+
+    // 真实播放：本地带 autoplay 放行参数时一定能起播；普通浏览器可能先被策略拦下。
+    // play() 调用后 paused 会立刻变 false（可能还在缓冲），所以这里接受三种状态。
+    ok(MUS.el.paused === false || MUS.blocked === true || MUS.ready === true,
+       '音乐已进入播放状态（被浏览器策略拦下则记录 blocked，等下一次交互）', MUS.status());
+    // 交互之后：要么已经在放，要么仍被策略拦着（直接双击 browser.html 时是后者）
+    ok(MUS.waiting() === false || MUS.blocked === true,
+       '交互后的状态自洽：在播就 ready，被拦着就 blocked', MUS.status());
+
+    D.gotoMenu();
+    D.tick(0.05);
+    ok(MUS.id === 'menu' && MUS._els.menu === MUS.el, '切回菜单复用同一个音频元素');
+
+    /* ---------- 12. 特效接入对局 ---------- */
+    group('12. 特效：粒子 / 震屏 / 飘字在真实对局里触发');
+    D.quickStart('dig', 'FX01');
+    D.tick(0.2);
+    BI.fx.reset();
+    D.press('Space');
+    ok(BI.fx.particles.length === 0, '只是放弹不会炸开粒子');
+    D.tick(CFG.FUSE + 0.05);
+    ok(BI.fx.particles.length > 0, '爆炸炸出了粒子', String(BI.fx.particles.length));
+    ok(BI.fx.shake > 0 || BI.fx.ox !== 0 || BI.fx.oy !== 0, '爆炸带上了震屏',
+       'shake=' + BI.fx.shake.toFixed(2));
+    try { D.render(1); ok(true, '带粒子渲染不抛异常'); }
+    catch (e) { ok(false, '带粒子渲染不抛异常', e.message); }
+
+    D.tick(1.6);
+    ok(BI.fx.particles.length === 0, '一秒多之后粒子自己清空了',
+       String(BI.fx.particles.length));
+
+    D.quickStart('dig', 'FX02');
+    D.tick(0.2);
+    BI.fx.reset();
+    var fp = D.world.players[0];
+    D.world.items.push({
+      c: BI.grid.col(fp.x), r: BI.grid.row(fp.y), type: 'fire', born: 0
+    });
+    D.tick(0.05);
+    ok(BI.fx.texts.length > 0, '吃道具冒出飘字', String(BI.fx.texts.length));
+    ok(/火力/.test(BI.fx.texts[0].str), '飘字内容正确', BI.fx.texts[0].str);
+
+    D.quickStart('adventure', 'FX03');
+    D.press('Enter');
+    D.tick(0.2);
+    BI.fx.reset();
+    D.world.enemies.length = 0;
+    D.tick(0.1);
+    ok(BI.fx.particles.length >= 60, '过关撒出彩带', String(BI.fx.particles.length));
+
+    D.tick(CFG.LEVEL_CLEAR_DELAY + 0.4);
+    ok(BI.fx.particles.length === 0 && BI.fx.shake === 0, '进入下一关时特效被清空',
+       JSON.stringify(BI.fx.stats()));
+
+    /* ---------- 13. 渲染 / 缩放 / 无异常 ---------- */
+    group('13. 渲染 / 缩放 / 无异常');
+    try { D.render(0.5); ok(true, 'render() 在插值中间值下不抛异常'); }
+    catch (e) { ok(false, 'render() 不抛异常', e.message); }
+
+    try {
+      D.render(0); D.render(1);
+      ok(true, 'render() 在 alpha=0 和 1 时都不抛异常');
+  } catch (e) { ok(false, 'render() 边界 alpha', e.message); }
+
+    try {
+      D.gotoMenu(); D.render(1);
+      D.quickStart('dig', 'RND1'); D.render(1);
+      D.quickStart('versus', 'RND2'); D.render(1);
+      D.quickStart('adventure', 'RND3');
+    D.press('Enter'); D.render(1);
+      D.app.paused = true; D.render(1); D.app.paused = false;
+      ok(true, '四种场景 + 暂停遮罩都能正常渲染');
+    } catch (e) { ok(false, '四种场景渲染不抛异常', e.message); }
+
+    try { window.dispatchEvent(new Event('resize')); ok(true, '窗口 resize 不抛异常'); }
+    catch (e) { ok(false, 'resize 不抛异常', e.message); }
+
+    ok(CFG.VIEW_W === 720 && CFG.VIEW_H === 696, '画布逻辑分辨率 720x696',
+       CFG.VIEW_W + 'x' + CFG.VIEW_H);
+
+    /* ---------- 14. 失焦清理 ---------- */
+    group('14. 失焦清理（否则切出去回来角色会一直跑）');
+    D.quickStart('dig', 'FOCUS1');
+    D.tick(0.1);
+    key('keydown', 'ArrowRight');
+    ok(BI.input.isDown('ArrowRight') === true, '按下时按键状态为真');
+    window.dispatchEvent(new Event('blur'));
+    ok(BI.input.isDown('ArrowRight') === false, '失焦后按键状态被清空');
+    ok(D.app.paused === true, '对局中失焦会自动暂停');
+
+    /* ---------- 15. 接线：真实对局必须遵守配置 ---------- */
+    group('15. 接线：真实对局里的世界必须和配置一致');
+    // 这一组是被坑出来的：world 字面量里写了两个 burnItems，
+    // 后者静默覆盖前者，功能整条是死的，而当时的测试全绿 ——
+    // 因为测试自己 makeWorld，从不走真实的 createWorld。
+    // 所以这里一律用 quickStart 开真局，检查真实对象。
+    ok(D.world.burnItems === CFG.BURN_ITEMS,
+       '真实对局的 world.burnItems 跟配置一致（重复键会让它悄悄变回 false）',
+       'world=' + D.world.burnItems + ' 配置=' + CFG.BURN_ITEMS);
+    ok(D.world.itemPool === 'core' || typeof D.world.itemPool === 'string',
+       '真实对局设置了道具池', String(D.world.itemPool));
+    ok(typeof D.world.showDanger === 'undefined', '已移除通用威胁图开关');
+
+    // 端到端：真局里放颗炸弹，把它旁边的道具炸掉
+    D.quickStart('dig', 'BURN01');
+    D.tick(0.2);
+    (function () {
+      var w = D.world, p = w.players[0];
+      var c = BI.grid.col(p.x) + 1, r = BI.grid.row(p.y);
+      w.map[r * CFG.COLS + c] = 0;                    // 保证那格是空地，火焰能过去
+      w.items.push({ c: c, r: r, type: 'fire', born: 0 });
+      ok(w.items.length === 1, '先在旁边放了一个道具');
+
+      D.press('Space');
+      ok(w.bombs.length === 1, '放下了炸弹');
+      D.tick(CFG.FUSE + 0.15);
+
+      ok(w.items.length === 0, '真实对局里爆炸把道具烧掉了（端到端）',
+         '还剩 ' + w.items.length + ' 个');
+    })();
+
+    // 端到端：砖块炸出来的道具不能被同一发爆炸烧掉
+    D.quickStart('dig', 'BURN02');
+    D.tick(0.2);
+    (function () {
+      var w = D.world, p = w.players[0];
+      var c = BI.grid.col(p.x) + 1, r = BI.grid.row(p.y);
+      var savedRate = CFG.ITEM_DROP_RATE;
+      CFG.ITEM_DROP_RATE = 1;                          // 必掉
+      w.map[r * CFG.COLS + c] = 2;                     // 那格改成软砖
+      D.press('Space');
+      D.tick(CFG.FUSE + 0.15);
+      CFG.ITEM_DROP_RATE = savedRate;
+      ok(w.items.length === 1, '砖块炸出来的道具活下来了（先烧后掉的顺序）',
+         '场上道具 ' + w.items.length + ' 个');
+    })();
+
+    /* ---------- 16. 暂停菜单 ---------- */
+    group('16. 暂停菜单：继续 / 重新开始 / 返回菜单');
+    D.quickStart('adventure', 'PAUSE1');
+    D.press('Enter');
+    D.tick(0.3);
+
+    ok(D.app.paused === false, '开局没暂停');
+    key('keydown', 'Escape'); key('keyup', 'Escape');
+    D.tick(1 / 60);
+    ok(D.app.paused === true, 'Esc 能暂停', String(D.app.paused));
+    ok(!!D.app.pause, '暂停时建出了暂停菜单状态');
+    ok(BI.pause.ITEMS.length === 3, '暂停菜单有三项', String(BI.pause.ITEMS.length));
+    ok(BI.pause.ITEMS[0].id === 'resume', '第一项是继续游戏');
+    ok(BI.pause.ITEMS[1].id === 'restart', '第二项是重新开始');
+    ok(BI.pause.ITEMS[2].id === 'menu', '第三项是返回菜单');
+
+    // 暂停时战场必须完全冻结
+    (function () {
+      var w = D.world;
+      var t0 = w.time, lv0 = w.match.level;
+      var px0 = w.players[0].x;
+      D.tick(1.0);
+      ok(w.time === t0, '暂停时对局时间不推进', t0 + ' -> ' + w.time);
+      ok(w.players[0].x === px0, '暂停时角色不会动');
+      D.hold('ArrowRight', 0.5);
+      ok(w.players[0].x === px0, '暂停时按方向键角色也不会动');
+      ok(w.match.level === lv0, '暂停时关卡不会变');
+    })();
+
+    // 上下选择（入场动画约 0.17 秒，先等它放完）
+    D.tick(0.4);
+    D.app.pause.index = 0;
+    key('keydown', 'ArrowDown'); key('keyup', 'ArrowDown');
+    D.tick(2 / 60);
+    ok(D.app.pause.index === 1, '↓ 选中第二项', String(D.app.pause.index));
+    key('keydown', 'ArrowDown'); key('keyup', 'ArrowDown');
+    D.tick(2 / 60);
+    ok(D.app.pause.index === 2, '再 ↓ 选中第三项', String(D.app.pause.index));
+    key('keydown', 'ArrowDown'); key('keyup', 'ArrowDown');
+    D.tick(2 / 60);
+    ok(D.app.pause.index === 0, '↓ 到底会绕回第一项', String(D.app.pause.index));
+    key('keydown', 'ArrowUp'); key('keyup', 'ArrowUp');
+    D.tick(2 / 60);
+    ok(D.app.pause.index === 2, '↑ 从第一项绕到最后一项', String(D.app.pause.index));
+
+    // 继续游戏
+    D.app.pause.index = 0;
+    key('keydown', 'Enter'); key('keyup', 'Enter');
+    D.tick(2 / 60);
+    ok(D.app.paused === false, '选「继续游戏」后恢复对局', String(D.app.paused));
+    ok(D.app.pause === null, '继续后暂停菜单被清掉');
+    (function () {
+      var t0 = D.world.time;
+      D.tick(0.5);
+      ok(D.world.time > t0, '恢复后时间重新推进');
+    })();
+
+    // Esc 直接继续（不等动画）
+    key('keydown', 'Escape'); key('keyup', 'Escape');
+    D.tick(1 / 60);
+    ok(D.app.paused === true, '再次 Esc 暂停');
+    key('keydown', 'Escape'); key('keyup', 'Escape');
+    D.tick(2 / 60);
+    ok(D.app.paused === false, '暂停时再按 Esc 立刻继续（不用等动画、也不用先选）');
+
+    // 重新开始
+    D.quickStart('adventure', 'PAUSE2');
+    D.press('Enter');
+    D.tick(0.3);
+    D.world.match.level = 4;
+    D.world.players[0].power = 6;
+    key('keydown', 'Escape'); key('keyup', 'Escape');
+    D.tick(0.4);                                   // 等入场动画
+    D.app.pause.index = 1;
+    key('keydown', 'Enter'); key('keyup', 'Enter');
+    D.tick(2 / 60);
+    ok(D.app.paused === false, '选「重新开始」后回到对局');
+    ok(D.scene === 'playing', '还在对局场景', D.scene);
+    ok(D.world.match.level === 1, '关卡回到第 1 关', String(D.world.match.level));
+    ok(D.world.players[0].power === CFG.START_POWER, '火力回到初始值',
+       String(D.world.players[0].power));
+
+    // 返回菜单
+    D.quickStart('dig', 'PAUSE3');
+    D.tick(0.3);
+    key('keydown', 'Escape'); key('keyup', 'Escape');
+    D.tick(0.4);
+    D.app.pause.index = 2;
+    key('keydown', 'Enter'); key('keyup', 'Enter');
+    D.tick(2 / 60);
+    ok(D.scene === 'menu', '选「返回菜单」后回到开始界面', D.scene);
+    ok(D.world === null, '返回菜单后对局被清掉');
+    ok(D.app.paused === false, '返回菜单后不是暂停状态');
+
+    // 鼠标点击暂停菜单
+    D.quickStart('dig', 'PAUSE4');
+    D.tick(0.3);
+    key('keydown', 'Escape'); key('keyup', 'Escape');
+    D.tick(0.5);                                   // 等入场动画放完
+    (function () {
+      var r = BI.pause.btnRect(1);                 // 「重新开始」
+      click(r.x + r.w / 2, r.y + r.h / 2);
+      D.tick(1 / 60);
+      unclick();
+      ok(D.scene === 'playing' && D.app.paused === false,
+         '鼠标点「重新开始」也能生效', D.scene + '/' + D.app.paused);
+    })();
+
+    // 失焦自动暂停也要弹出菜单
+    D.quickStart('dig', 'PAUSE5');
+    D.tick(0.2);
+    window.dispatchEvent(new Event('blur'));
+    D.tick(1 / 60);
+    ok(D.app.paused === true && !!D.app.pause,
+       '切出去（失焦）自动暂停并弹出菜单');
+
+    // 渲染不抛异常
+    try { D.render(1); ok(true, '暂停菜单渲染不抛异常'); }
+    catch (e) { ok(false, '暂停菜单渲染不抛异常', e.message); }
+
+    /* ---------- 17. 真实键盘下不许斜走 ---------- */
+    group('17. 真实键盘：同时按住两个方向也不会斜走');
+    D.quickStart('versus', 'DIAG1');
+    D.tick(0.2);
+    (function () {
+      var p = D.world.players[0];
+      // 先清出一片空地，否则会被软砖挡住，测出来的不是"能不能走"而是"有没有路"
+      var w = D.world, CG = CFG.COLS;
+      for (var rr = 1; rr <= 6; rr++) for (var cc = 1; cc <= 10; cc++) w.map[rr * CG + cc] = 0;
+
+      // 先按住右，隔一帧再按下 —— 这才是"先右后下"的真实操作。
+      // 注意：ArrowRight 全程按住不松，直到最后才放。
+      key('keydown', 'ArrowRight');
+      D.tick(1 / 60);
+      var x1 = p.x, y1 = p.y;          // 从"已经朝右走了一帧"之后开始量
+
+      key('keydown', 'ArrowDown');
+      D.tick(0.6);
+      key('keyup', 'ArrowDown');
+
+      var dx1 = p.x - x1, dy1 = p.y - y1;
+      ok(p.axisPref === 'y', '后按下的是「下」，axisPref 记为 y', p.axisPref);
+      ok(Math.abs(dx1) < 0.01 && dy1 > 0,
+         '先按右、后按下：改成只沿 y 走，x 一点都不动（不是斜着走）',
+         'dx=' + dx1.toFixed(2) + ' dy=' + dy1.toFixed(1));
+
+      // 松开「下」之后，还按着的「右」要立刻接管
+      var mx = p.x, my = p.y;
+      D.tick(0.5);
+      key('keyup', 'ArrowRight');
+      ok(p.x > mx, '松开「下」之后「右」立刻接管，不会卡住',
+         'dx=' + (p.x - mx).toFixed(1) + '（右键仍按住=' + BI.input.isDown('ArrowRight') + ' 已太晚，此处为松开前）');
+      ok(Math.abs(p.y - my) < 0.01, '接管后只沿 x 走，y 完全不动',
+         'dy=' + (p.y - my).toFixed(2));
+    })();
+
+    // 用 2P 验证一次（WASD + 空格，键位完全不同）
+    D.quickStart('versus', 'DIAG2');
+    D.tick(0.2);
+    (function () {
+      var p2 = D.world.players[1];
+      var x0 = p2.x, y0 = p2.y;
+      key('keydown', 'KeyA'); key('keydown', 'KeyW');
+      D.tick(0.6);
+      key('keyup', 'KeyA'); key('keyup', 'KeyW');
+      var dx = p2.x - x0, dy = p2.y - y0;
+      ok(Math.abs(dx) < 0.01 || Math.abs(dy) < 0.01,
+         '2P 同时按 A+W：只有一个轴产生位移',
+         'dx=' + dx.toFixed(1) + ' dy=' + dy.toFixed(1));
+    })();
+
+    group('新增：关前介绍与道具图标');
+    D.quickStart('adventure', 'BRIEF01');
+    var introWorld = D.world;
+    ok(introWorld.briefing.fresh.join(',') === 'gugu', '第一关介绍谷谷歌歌');
+    var startTime = introWorld.time, startX = introWorld.enemies[0].x;
+    D.tick(2);
+    ok(introWorld.time === startTime && introWorld.enemies[0].x === startX,
+      '阅读介绍时整个战场与计时冻结');
+    D.render(1);
+    D.press('Space');
+    ok(!introWorld.briefing && introWorld.bombs.length === 0, '空格确认介绍不会顺便放弹');
+    D.tick(.1);
+    ok(introWorld.time > startTime, '确认后战场开始推进');
+    BI.rules.applyItem(introWorld.players[0], 'shield');
+    introWorld.enemies.length = 0;
+    D.tick(CFG.LEVEL_CLEAR_DELAY + .2);
+    ok(introWorld.match.level === 2 && introWorld.briefing.fresh.join(',') === 'claude',
+      '第二关介绍克劳德德');
+    ok(introWorld.players[0].shield === 1, '未使用的护盾跨关保留');
+    D.render(1);
+    click(360, 605); D.tick(1 / 60); unclick();
+    ok(!introWorld.briefing, '鼠标按钮可以确认介绍');
+    introWorld.enemies.length = 0;
+    D.tick(CFG.LEVEL_CLEAR_DELAY + .2);
+    ok(introWorld.match.level === 3 && introWorld.briefing.fresh.join(',') === 'oupao',
+      '第三关介绍偶喷诶艾');
+    D.render(1); D.press('Enter');
+    introWorld.enemies.length = 0;
+    D.tick(CFG.LEVEL_CLEAR_DELAY + .2);
+    ok(introWorld.briefing && introWorld.briefing.fresh.length === 0,
+      '没有新怪物的关卡仍显示关前阵容提醒');
+    D.render(1); D.press('Enter');
+    var iconCtx = document.getElementById('game').getContext('2d');
+    var iconTextCalls = 0, originalText = iconCtx.fillText;
+    iconCtx.fillText = function () { iconTextCalls++; };
+    BI.sprites.drawItems(iconCtx, ['fire', 'bomb', 'speed', 'star', 'shield', 'kick', 'glove'].map(function (type, i) {
+      return { type: type, c: i + 1, r: 2, born: 0 };
+    }), 1);
+    iconCtx.fillText = originalText;
+    ok(iconTextCalls === 0, '全部道具通过图形绘制，泡泡里没有文字');
+    D.quickStart('versus', 'STAR_RENDER');
+    D.world.players.forEach(function (p) {
+      BI.rules.applyItem(p, 'shield'); BI.rules.applyItem(p, 'star');
+    });
+    D.render(1);
+    ok(D.world.players.every(function (p) { return p.starTime === 6 && p.shield === 1; }),
+      '双人无敌和护盾状态可同时绘制');
+
+    group('新增：精灵技能与场景接线');
+    Object.keys(BI.SKILLS).forEach(function (id) {
+      if (BI.SKILLS[id].passive) return;
+      D.quickStart('adventure', 'SKILL_' + id); D.press('Enter');
+      var w = D.world, p = w.players[0]; p.assetId = id;
+      for (var r=1;r<CFG.ROWS-1;r++) for(var c=1;c<CFG.COLS-1;c++) w.map[r*CFG.COLS+c]=BI.T.EMPTY;
+      p.x=p.px=G.centerX(5); p.y=p.py=G.centerY(5); p.invuln=0;
+      w.enemies=[BI.entities.create('oupao',10,9,1)];
+      D.press('KeyQ');
+      ok(p.skillCd>0 && w.skillEffects.length>0, id+' 的 Q 键确实触发技能与特效');
+      D.press('Escape'); var cooldown=p.skillCd; D.tick(.5);
+      ok(p.skillCd===cooldown, id+' 暂停时技能冷却与持续时间冻结');
+      D.render(1); D.press('Escape'); D.tick(.1);
+      ok(p.skillCd<cooldown, id+' 继续后技能计时恢复');
+      D.render(1);
+    });
+    D.quickStart('versus','SKILL_VS');
+    D.world.players[0].assetId='arui'; D.world.players[1].assetId='xiaotian';
+    D.press('ShiftRight');
+    ok(D.world.players[0].shield===1 && !D.world.players[1].skillCd, '双人右 Shift 只释放 1P 技能');
+    D.press('KeyF');
+    ok(D.world.players[1].insightTime>0, '双人 F 键释放 2P 技能');
+    D.render(1);
+    BI.debug.gotoMenu(); BI.menu.draw(iconCtx,D.app.menu);
+    D.quickStart('adventure','THEME_CHANGE'); D.press('Enter');
+    var oldTheme=D.world.theme;
+    D.world.players[0].x=G.centerX(12); D.world.players[0].y=G.centerY(10);
+    D.world.enemies=[]; D.tick(CFG.LEVEL_CLEAR_DELAY+.2);
+    ok(D.world.theme!==oldTheme, '进入下一关时场景自动变化');
+    ok(D.world.enemies.every(function(e) {
+      return Math.abs(G.col(e.x)-1)+Math.abs(G.row(e.y)-1)>=6;
+    }), '换关后怪物远离新的玩家出生点');
+    var words=[], realText=iconCtx.fillText;
+    iconCtx.fillText=function(t){words.push(String(t));};
+    BI.hud.drawBriefing(iconCtx,D.world);
+    ok(!words.some(function(t){return t.indexOf('无敌 6 秒')>=0 || t.indexOf('抵挡一次伤害后消失')>=0;}),
+      '关前介绍已移除多余的道具说明');
+    words=[];
+    var hero=D.world.players[0]; hero.starTime=6;
+    BI.sprites.drawCharacter(iconCtx,hero,0,1);
+    iconCtx.fillText=realText;
+    ok(!words.some(function(t){return /[0-9]s$/.test(t);}), '无敌角色头顶不绘制秒数');
+    var mapBefore=Array.prototype.join.call(D.world.map,','), themePixels=[];
+    var mapCanvas=document.createElement('canvas');mapCanvas.width=720;mapCanvas.height=624;var mapCtx=mapCanvas.getContext('2d');
+    Object.keys(BI.THEMES).forEach(function(theme){
+      BI.sprites.drawMap(mapCtx,D.world.map,theme,0);
+      themePixels.push(mapCtx.getImageData(0,0,1,1).data.join(','));
+    });
+    ok(new Set(themePixels).size===3 && mapBefore===Array.prototype.join.call(D.world.map,','),
+      '三套场景使用不同画面，渲染不修改碰撞地图');
+
+    group('小天专属洞察：移除 D 键通用威胁图');
+    D.quickStart('dig','EXCLUSIVE_INSIGHT');
+    var sw=D.world, owner=sw.players[0]; owner.assetId='xiaoyan';
+    sw.bombs=[{cx:5,cy:5,power:2,fuse:2,ownerId:owner.id,freeFor:null}];
+    var zoneDraws=0, oldFill=iconCtx.fill;
+    iconCtx.fill=function(){zoneDraws++;};
+    D.press('KeyD'); BI.sprites.drawBombZones(iconCtx,sw,0);
+    ok(zoneDraws===0 && typeof sw.showDanger==='undefined', '其他角色按 D 不会开启威胁图或范围显示');
+    owner.insightTime=6; BI.sprites.drawBombZones(iconCtx,sw,0);
+    ok(zoneDraws===0, '其他角色不能通过非专属状态获得洞察显示');
+    owner.insightTime=0; owner.assetId='xiaotian';
+    BI.sprites.drawBombZones(iconCtx,sw,0);
+    ok(zoneDraws===0, '小天没有施放技能时也不显示范围');
+    BI.skills.cast(sw,owner); BI.sprites.drawBombZones(iconCtx,sw,0);
+    ok(zoneDraws>0, '只有小天施放洞察后的持续时间内显示爆炸范围');
+    zoneDraws=0; BI.skills.update(sw,6.1); BI.sprites.drawBombZones(iconCtx,sw,0);
+    iconCtx.fill=oldFill;
+    ok(zoneDraws===0, '小天洞察结束后自动撤去爆炸范围');
+    D.quickStart('versus','KEEP_WASD');
+    var walker=D.world.players[1];
+    for(var rr=1;rr<12;rr++)for(var cc=1;cc<14;cc++)D.world.map[rr*15+cc]=BI.T.EMPTY;
+    walker.x=walker.px=G.centerX(5);walker.y=walker.py=G.centerY(5);
+    var wx=walker.x;D.hold('KeyD',.2);
+    ok(walker.x>wx,'移除威胁图快捷键后，双人2P的D键向右移动正常');
+
+    group('中央设施与换关场景');
+    function useScenery(theme,seed) {
+      D.quickStart('adventure',seed);
+      var w=D.world,rng=BI.makeRng(91),level=BI.levelgen.generate(rng,{mode:'adventure',theme:theme,spawns:w.spawns});
+      w.map=level.map;w.theme=theme;w.enemies=[];BI.entities.spawn(w,3,1,rng);
+      w.seenEnemies={};BI.entities.prepareBriefing(w);return w;
+    }
+    var fw=useScenery('forest','TREE01');fw.map.landmark.fruitTimer=.1;
+    D.tick(1);
+    ok(!fw.items.length&&fw.map.landmark.fruitTimer===.1,'关前阅读时古树掉落计时冻结');
+    D.press('Enter');D.tick(.15);
+    ok(fw.items.some(function(it){return it.type==='fruit';}),'真实对局中的古树会生成生命果实');
+    D.render(1);
+    var bw=useScenery('factory','BELT01');D.press('Enter');
+    var bp=bw.players[0];bp.x=bp.px=G.centerX(5);bp.y=bp.py=G.centerY(3);bp.invuln=30;
+    var bx=bp.x;D.tick(.4);
+    ok(bp.x>bx&&Math.abs(bp.y-G.centerY(3))<.01,'真实游戏中不按键也会随传送带移动');
+    D.press('Escape');var pausedX=bp.x,pausedY=bp.y;D.tick(1);
+    ok(bp.x===pausedX&&bp.y===pausedY,'暂停时传送带不会继续拖动角色');D.press('Escape');D.render(1);
+    var pw=useScenery('park','CAROUSEL01');D.press('Enter');
+    pw.enemies.forEach(function(e){e.stun=60;});
+    var rider=pw.players[0];rider.invuln=30;rider.x=rider.px=G.centerX(5);rider.y=rider.py=G.centerY(4);
+    D.tick(9.1);
+    ok(rider.carouselRewarded&&rider.shield===1,'真实对局搭乘木马一圈后获得护盾');D.render(1);
+    var lastTheme=pw.theme,repeat=0;
+    for(var turn=0;turn<8;turn++) {
+      pw.match.level++;pw.onNextLevel();
+      if(pw.theme===lastTheme)repeat++;
+      lastTheme=pw.theme;
+      if(pw.players[0].carouselRewarded)repeat++;
+      D.render(1);D.press('Enter');
+    }
+    ok(repeat===0,'连续八次换关均更换主题，并重置本关木马奖励资格');
+    var variantsText=Object.keys(BI.THEMES).map(function(theme){
+      var vw=useScenery(theme,'VARIANTS_'+theme),types=new Set();
+      vw.map.forEach(function(v,i){if(v===BI.T.BRICK)types.add(vw.map.variants[i]);});
+      D.render(1);return types.size;
+    });
+    ok(variantsText[0]===4&&variantsText[1]===3&&variantsText[2]===3,'实际对局中森林四种、工厂三种、游乐园三种可破坏障碍均能绘制');
+
+      group('新 NPC 与鲁鲁旦实机流程');
+    var pixelCanvas=document.createElement('canvas');pixelCanvas.width=80;pixelCanvas.height=100;
+    var pixelCtx=pixelCanvas.getContext('2d'), originalDraw=pixelCtx.drawImage;
+    ['gugu','claude','oupao'].forEach(function(id){
+      var e=BI.entities.create(id,1,1,1);e.x=e.px=40;e.y=e.py=70;
+      var draws=[];
+      pixelCtx.drawImage=function(){
+        draws.push({alpha:this.globalAlpha,width:arguments[7],height:arguments[8]});
+        return originalDraw.apply(this,arguments);
+      };
+      [0,.05,.5,1].forEach(function(alpha){
+        pixelCtx.clearRect(0,0,80,100);BI.sprites.drawEnemy(pixelCtx,e,0,alpha);
+      });
+      ok(BI.assets.readyEnemy(id)&&draws.length===4&&draws.every(function(p){return p.alpha===1;}),
+        id+' 在插值0到1时始终使用真实素材且完全不透明');
+      ok(draws.every(function(p){return p.width===52&&p.height===48;}),id+' 素材显示尺寸统一为52×48');
+    });
+    pixelCtx.drawImage=originalDraw;
+    ok(BI.assets.enemyArt.ok&&BI.assets.enemyArt.img.naturalWidth>100,'鲁鲁旦真实透明PNG素材加载完成');
+    D.quickStart('adventure','BOSS_FLOW');D.press('Enter');
+    var rw=D.world;rw.match.level=4;rw.enemies=[];
+    var priorTheme=rw.theme;D.tick(CFG.LEVEL_CLEAR_DELAY+.2);
+    ok(rw.match.level===5&&rw.map.bossBattle&&rw.map.length===195&&rw.map.landmark&&BI.match.countBricks(rw.map)>=30&&rw.enemies.length===3&&rw.enemies[0].hp===8,
+      '第四关通关后在常规三主题地图中迎战8血鲁鲁旦和两只随从');
+    ok(rw.theme!==priorTheme&&rw.briefing.fresh[0]==='boss','BOSS关换场景并展示鲁鲁旦介绍');
+    var bossTime=rw.time;D.tick(1);ok(rw.time===bossTime,'BOSS关介绍期间所有攻击冻结');D.render(.05);
+    D.press('Enter');rw.players[0].invuln=100;var boss=rw.enemies[0];
+    boss.abilityCd=0;BI.ai.bossAbility(rw,boss,30);
+    ok(!rw.poison.length&&BI.entities.bossStage(boss).id===1,'BOSS满血试探阶段不会施放毒叉');
+    boss.hp=6;BI.entities.syncBossPhase(rw,boss);
+    BI.ai.castForks(rw,boss);var fork=rw.poison[0], warningLeft=fork.warn;
+    D.press('Escape');D.tick(1);D.render(1);
+    ok(fork.warn===warningLeft-1/60,'暂停冻结毒叉预警，不会在暂停期间落下');
+    D.press('Escape');D.tick(1.5);D.render(.5);
+    ok(rw.poison.some(function(f){return f.warn===0;}),'毒叉在真实主循环中从预警转为伤害阶段');
+    var farHero=rw.players[0];farHero.invuln=10;
+    G.set(rw.map,2,1,BI.T.EMPTY);G.set(rw.map,3,1,BI.T.EMPTY);farHero.x=farHero.px=G.centerX(2);farHero.y=farHero.py=G.centerY(1);
+    var farX=farHero.x;D.hold('ArrowRight',.12);D.render(.05);
+    ok(farHero.x>farX,'BOSS关使用常规场景中的正常移动和渲染');
+    var bossTheme=rw.theme;rw.enemies.forEach(function(e){BI.rules.killEnemy(rw,e);});D.tick(CFG.LEVEL_CLEAR_DELAY+.2);
+    ok(rw.match.level===6&&!rw.map.bossBattle&&G.cols(rw.map)===15&&G.rows(rw.map)===13&&rw.poison.length===0,
+      '击败鲁鲁旦后进入下一常规场景，毒叉状态全部清理');
+    ok(rw.theme!==bossTheme&&G.col(rw.players[0].x)===1&&G.row(rw.players[0].y)===1,
+      '第六关更换场景并恢复普通出生点');D.render(1);
+
+
+    group('高清角色与连锁爆炸回归');
+    BI.assets.selectable().forEach(function(id){
+      var asset=BI.assets.ready(id);
+      ok(asset&&/-hd\.png$/.test(asset.image)&&Math.min(asset.img.naturalWidth,asset.img.naturalHeight)>=1000,
+        id+' 加载千像素以上高清角色原图');
+      ok(asset&&asset.sprite&&asset.sprite.height===512&&asset.crop.length===4,
+        id+' 使用加载时裁切的512像素缓存，不逐帧缩放原图');
+    });
+    D.quickStart('adventure','FREEZE_STAGE3');D.startLevel(3);D.press('Enter');
+    var cw=D.world,cp=cw.players[0];cp.assetId='xiaonuo';cp.invuln=100;
+    for(var rr=1;rr<12;rr++)for(var cc=1;cc<14;cc++)G.set(cw.map,cc,rr,BI.T.EMPTY);
+    cw.enemies.forEach(function(e){e.stun=100;});
+    var chainBomb=function(c,fuse,enemy){return {cx:c,cy:5,power:2,fuse:fuse,fuseTotal:4.2,ownerId:enemy?'enemy':'p1',byEnemy:enemy,freeFor:null};};
+    // 先放长引信敌弹，再放短引信玩家弹：原版会在连锁后读取失效下标并终止。
+    cw.bombs=[chainBomb(5,8,true),chainBomb(6,.001,false)];D.press('KeyQ');
+    ok(cw.bombs.length===0&&cw.stats.explosions===2&&cw.timeStop,
+      '第三关小诺施放时停，玩家弹仍可连锁敌弹，主循环没有异常');
+    var chainTime=cw.time;D.tick(1);D.render(1);
+    ok(cw.time>chainTime&&cp.alive,'连锁爆炸后整局仍然推进，角色保持可操作');
+    var nextFrameTime=1000;
+    function advanceFrame(){var fn=window.__frameQueue.shift();if(!fn)throw Error('No scheduled animation frame');fn(nextFrameTime);nextFrameTime+=20;}
+    advanceFrame();
+    var savedBombUpdate=BI.rules.updateBombs;
+    try {
+      BI.rules.updateBombs=function(){throw Error('injected chain regression');};
+      advanceFrame();
+    } finally { BI.rules.updateBombs=savedBombUpdate; }
+    ok(D.app.runtimeFault&&D.app.paused&&window.__frameQueue.length===1,
+      '实际动画帧遇到异常时进入可操作恢复界面，并继续安排下一帧');
+    ok(D.app.runtimeFault.level===3&&D.app.runtimeFault.characters[0]==='xiaonuo',
+      '异常记录保留关卡、角色和错误信息以便继续定位');
+    D.press('Escape');advanceFrame();
+    ok(!D.app.runtimeFault&&!D.app.paused&&cw.time>chainTime,'异常原因消除后可继续游戏，动画循环恢复');
+    var savedEnemyDraw=BI.sprites.drawEnemy;
+    // 保证本次绘制确实有敌人；上一段随机出生的怪物可能已被连锁炸光。
+    cw.enemies=[BI.entities.create('gugu',13,11,3)];cw.enemies[0].stun=100;cw.match.levelClearAt=0;
+    try {
+      BI.sprites.drawEnemy=function(){throw Error('injected render regression');};advanceFrame();
+    } finally { BI.sprites.drawEnemy=savedEnemyDraw; }
+    ok(D.app.runtimeFault&&D.app.pause&&window.__frameQueue.length===1,
+      '渲染途中发生异常也不会中断循环，菜单仍能正常绘制');
+    D.press('KeyR');advanceFrame();
+    ok(!D.app.runtimeFault&&!D.app.paused&&D.world.match.level===1&&D.scene==='playing',
+      '异常界面可以直接重开本局，清除异常状态');
+    D.press('Enter');
+    try {
+      BI.rules.updateBombs=function(){throw Error('injected recovery menu');};advanceFrame();
+    } finally { BI.rules.updateBombs=savedBombUpdate; }
+    D.press('KeyM');advanceFrame();
+    ok(D.scene==='menu'&&!D.app.runtimeFault&&window.__frameQueue.length===1,
+      '异常界面可以返回主菜单，动画循环仍在运行');
+
+    group('炸弹碰撞、生命爱心与工厂运弹');
+    D.quickStart('adventure','PHYSICAL_BOMB');D.press('Enter');
+    var mw=D.world,mp=mw.players[0];mw.enemies.forEach(function(e){e.stun=100;});
+    for(var r=2;r<=4;r++)for(var c=3;c<=8;c++)G.set(mw.map,c,r,BI.T.EMPTY);
+    mw.bombs=[{cx:6,cy:3,power:1,fuse:100,ownerId:'other',freeFor:null}];
+    mp.x=mp.px=G.centerX(6)-26;mp.y=mp.py=G.centerY(3)+26;mp.invuln=100;
+    var startLeft=mp.x;D.hold('ArrowLeft',.2);
+    ok(mp.x<startLeft-20,'实战中斜角远离炸弹的位置不会被空气墙卡住');
+    var heartCalls=[],oldHeart=BI.hud.heart;
+    BI.hud.heart=function(ctx,x,y,size){heartCalls.push([x,y]);return oldHeart.apply(this,arguments);};
+    [1,3,5].forEach(function(lives){mp.lives=lives;heartCalls=[];BI.hud.draw(iconCtx,mw,{});
+      ok(heartCalls.length===lives&&heartCalls.every(function(c){return c[0]>CFG.VIEW_W/2&&c[1]<CFG.HUD_H;}),'右上角按剩余'+lives+'条命绘制对应数量的爱心');
+    });
+    BI.hud.heart=oldHeart;
+    var belt=useScenery('factory','MOVING_BOMB');D.press('Enter');belt.enemies.forEach(function(e){e.stun=100;});
+    var movingBomb={cx:5,cy:3,power:1,fuse:100,ownerId:'p1',freeFor:null};belt.bombs=[movingBomb];
+    var initialBombX=G.bombPosition(movingBomb).x;D.tick(.4);
+    ok(G.bombPosition(movingBomb).x>initialBombX+20,'真实对局里炸弹随工厂传送带移动');
+    var drawn=[],realTranslate=iconCtx.translate;
+    iconCtx.translate=function(x,y){drawn.push([x,y]);return realTranslate.apply(this,arguments);};
+    BI.sprites.drawBombs(iconCtx,belt.bombs,belt.time);iconCtx.translate=realTranslate;
+    ok(drawn.some(function(pt){return Math.abs(pt[0]-movingBomb.x)<.01&&Math.abs(pt[1]-movingBomb.y)<.01;}),
+      '运送炸弹的画面与碰撞使用同一个实际位置');
+    D.press('Escape');var pausedBomb=G.bombPosition(movingBomb).x;D.tick(.5);
+    ok(G.bombPosition(movingBomb).x===pausedBomb,'暂停时传送带炸弹同步停止');D.press('Escape');
+    ['forest','factory','park'].forEach(function(theme){
+      var rng=BI.makeRng(81),lvl=BI.levelgen.generateBoss(rng,'',theme);belt.map=lvl.map;belt.theme=theme;belt.spawns=lvl.spawns;belt.enemies=[];
+      belt.bombs=[];belt.poison=[];belt.players[0].x=G.centerX(1);belt.players[0].y=G.centerY(1);BI.entities.spawn(belt,1,5,rng);
+      BI.entities.prepareBriefing(belt);D.render(1);D.press('Enter');D.render(.05);
+      ok(belt.map.length===195&&belt.map.landmark.theme===theme&&BI.match.countBricks(belt.map)>=40,
+        '鲁鲁旦在'+theme+'原场景中显示设施、障碍与正常尺寸的生命条');
+    });
+
+    group('推弹手套与BOSS随从实战回归');
+    D.quickStart('dig','GLOVE_CONTACT');
+    var gw=D.world,gp=gw.players[0];
+    for(var gr=1;gr<12;gr++)for(var gc=1;gc<14;gc++)G.set(gw.map,gc,gr,BI.T.EMPTY);
+    G.set(gw.map,8,5,BI.T.BRICK); // 避免拾取手套那一帧因全图无砖提前结算。
+    gw.map.landmark=null;gp.x=gp.px=G.centerX(5)+16;gp.y=gp.py=G.centerY(5);gp.invuln=100;
+    gw.items=[{c:5,r:5,type:'glove'}];D.tick(1/60);
+    ok(gp.glove&&!gw.items.length,'主循环中可以拾取手套');
+    var gb={cx:6,cy:5,power:1,fuse:2.4,ownerId:'other',freeFor:null};gw.bombs=[gb];
+    G.set(gw.map,8,5,BI.T.BRICK);D.hold('ArrowRight',.08);
+    ok(gb.slide,'按方向接触炸弹即可推动，包括玩家暂时被炸弹挡住时');
+    D.tick(.4);D.render(.05);
+    ok(gw.bombs.includes(gb)&&!gb.slide&&G.at(gw.map,8,5)===BI.T.BRICK&&gb.fuse>1.8,'实际对局中推弹到障碍前停下，原引信继续倒数');
+    D.tick(gb.fuse+.02);
+    ok(!gw.bombs.includes(gb)&&G.at(gw.map,8,5)===BI.T.EMPTY,'原引信结束后才爆炸并破坏障碍');
+    var gloveCanvas=document.createElement('canvas');gloveCanvas.width=64;gloveCanvas.height=64;
+    var gloveCtx=gloveCanvas.getContext('2d');BI.sprites.drawItemIcon(gloveCtx,'glove',32,32,44);
+    ok(gloveCtx.getImageData(32,32,1,1).data[3]>0,'手套使用清晰卡通图标');
+    var carousel=useScenery('park','CAROUSEL_BOMB');D.press('Enter');carousel.enemies.forEach(function(e){e.stun=100;});
+    var rideBomb={cx:6,cy:4,power:1,fuse:100,ownerId:'other',freeFor:null};carousel.bombs=[rideBomb];
+    var rideX=G.bombPosition(rideBomb).x;D.tick(.4);D.render(.95);
+    ok(G.bombPosition(rideBomb).x>rideX+25,'真实主循环中的木马环道也会运送炸弹');
+    D.press('Escape');var frozenRide=G.bombPosition(rideBomb);D.tick(.5);
+    ok(G.bombPosition(rideBomb).x===frozenRide.x,'暂停同步停止木马运弹');D.press('Escape');
+    D.quickStart('adventure','ESCORT_SURVIVES');D.startLevel(5);D.press('Enter');
+    var escorts=D.world;escorts.players[0].invuln=100;escorts.enemies.forEach(function(e){e.stun=100;});
+    BI.rules.killEnemy(escorts,escorts.enemies.find(function(e){return e.type==='boss';}));
+    D.tick(1);D.render(.05);
+    ok(escorts.match.level===5&&BI.match.countEnemies(escorts)===2&&!D.app.runtimeFault,
+      '鲁鲁旦已被移除而随从仍存活时，生命条渲染正常且不会提前过关');
+    escorts.enemies.forEach(function(e){BI.rules.killEnemy(escorts,e);});D.tick(CFG.LEVEL_CLEAR_DELAY+.2);
+    ok(escorts.match.level===6,'清完随从后正常进入第六关');
+
+    group('未来：六人选角 / 被动放弹 / 通灵素材 / 跨关与重生');
+    D.gotoMenu();D.app.menu=BI.menu.create();
+    var fm=D.app.menu,fi=fm.chars.findIndex(function(ch){return ch.id==='weilai';});
+    ok(fm.chars.length===6&&fi>=0,'未来作为第六个可选角色加入菜单，通灵素材不是额外角色');
+    var frow=fm.rows.find(function(row){return row.type==='char';}),fcards=BI.menu.itemsOf(fm,frow);
+    ok(fcards.length===6&&fcards.every(function(card){return card.w>=80&&card.x+card.w<=701;}),'六人卡片仍可点击且全部位于菜单范围内');
+    var fcard=fcards[fi];click(fcard.x+fcard.w/2,fcard.y+fcard.h/2);D.tick(1/60);unclick();D.render(1);
+    var menuWords=[],menuText=iconCtx.fillText;iconCtx.fillText=function(s){menuWords.push(String(s));};BI.menu.draw(iconCtx,fm);iconCtx.fillText=menuText;
+    ok(menuWords.some(function(s){return s.indexOf('被动 · 迁境奇点')===0;})&&!menuWords.some(function(s){return s.indexOf('0s 冷却')>=0;}),
+      '菜单明确显示放弹被动，不显示Q键或虚构零秒冷却');
+    ok(menuWords.some(function(s){return s.indexOf('放弹6次或击杀通灵')>=0;}),
+      '菜单通灵次数直接读配置（显示 6 次，不再写死 10）',
+      menuWords.filter(function(s){return s.indexOf('通灵')>=0;}).join(' | '));
+    ok(menuWords.indexOf('作者：初霁')>=0,'开始界面署名作者',menuWords.join(' | '));
+    D.press('Enter');D.press('Enter');
+    var fw=D.world,fp=fw.players[0];
+    ok(fp.assetId==='weilai'&&!fp.soulEvolved,'鼠标选中未来后可正常开始普通形态对局');
+    for(var fr=1;fr<12;fr++)for(var fcol=1;fcol<14;fcol++)G.set(fw.map,fcol,fr,BI.T.EMPTY);
+    fw.map.landmark=null;fw.bombs=[];fw.flames=[];fp.x=fp.px=G.centerX(5);fp.y=fp.py=G.centerY(5);fp.invuln=100;
+    var closeSoul=BI.entities.create('gugu',6,5,1),farSoul=BI.entities.create('claude',10,9,1);fw.enemies=[closeSoul,farSoul];
+    fw.enemies.forEach(function(e){e.stun=100;});
+    D.press('KeyQ');ok(!fp.skillCd&&!fw.bombs.length&&!(fw.skillEffects || []).length,'未来按Q不会主动施法或放弹');
+    D.press('Space');
+    ok(fw.bombs.length===1&&closeSoul.soulSlowRate===.45&&closeSoul.soulSlowTime>1.9&&!farSoul.soulSlowTime,
+      '真实空格放弹触发周围3×3的45%减速');
+    ok(fp.soulBombs===1&&!fp.soulEvolved,'第一颗炸弹只填一格通灵条');
+    var soulBars=[],soulWords=[],barBlob=BI.draw.blob,barText=iconCtx.fillText;
+    BI.draw.blob=function(ctx,x,y,w,h){if(h===5)soulBars.push({x:x,y:y,w:w});return barBlob.apply(this,arguments);};
+    iconCtx.fillText=function(s){soulWords.push(String(s));};BI.hud.drawSkills(iconCtx,fw);BI.draw.blob=barBlob;iconCtx.fillText=barText;
+    ok(soulBars.some(function(bar){return Math.abs(bar.w-176)<.01;})&&soulBars.some(function(bar){return Math.abs(bar.w-176/6)<.01;}),
+      '通灵条使用固定紧凑宽度，按 6 格刻度填充进度');
+    ok(soulWords.includes('通灵')&&!soulWords.some(function(s){return /\d+\/\d+/.test(s);}),
+      '通灵进度以条形显示，不再输出次数分数');
+    D.press('Escape');var pausedSoul=closeSoul.soulSlowTime;D.tick(.5);
+    ok(closeSoul.soulSlowTime===pausedSoul,'暂停冻结被动减速持续时间');D.press('Escape');
+    // 击杀通灵：炸死旁边那只小怪，通灵条直接打满（哪怕只放了 1 颗弹）
+    fw.bombs[0].fuse=.001;D.tick(1/60);D.render(.05);
+    ok(fp.soulEvolved&&fp.soulBombs===6&&fp.soulAwakenTime>1.5&&fp.asset&&fp.asset.id==='weilai-awakened',
+      '击杀一只敌人直接把通灵条打满，立刻切换双翼通灵形态并播放觉醒动画',
+      'soulBombs='+fp.soulBombs);
+    D.press('Escape');var pausedAwaken=fp.soulAwakenTime;D.tick(.5);
+    ok(fp.soulAwakenTime===pausedAwaken,'暂停冻结通灵特效动画');D.press('Escape');
+    var soulMask=fp.asset._soulMask;D.render(.95);
+    ok(soulMask&&fp.asset._soulMask===soulMask&&fp.asset.height>2&&fp.charName==='未来',
+      '通灵素材使用缓存轮廓光晕，保留未来名字并绘制完整守护灵');
+    var passiveWords=[],passiveText=iconCtx.fillText;iconCtx.fillText=function(s){passiveWords.push(String(s));};BI.hud.drawSkills(iconCtx,fw);iconCtx.fillText=passiveText;
+    ok(passiveWords.includes('被动')&&passiveWords.includes('已通灵')&&passiveWords.includes('迁境奇点')&&!passiveWords.includes('Q'),
+      '通灵后紧凑技能栏显示被动、迁境奇点与通灵状态');
+    fw.bombs=[];fw.flames=[];var empowered=BI.entities.create('gugu',7,7,1);empowered.stun=100;fw.enemies.push(empowered);D.press('Space');
+    ok(empowered.soulSlowRate===.75&&empowered.soulSlowTime>2.9,'通灵后实际放弹覆盖第二圈角落，减速75%持续3秒');
+    fw.bombs=[];fw.flames=[];fw.enemies.forEach(function(e){BI.rules.killEnemy(fw,e);});D.tick(CFG.LEVEL_CLEAR_DELAY+.2);
+    ok(fw.match.level===2&&!fp.soulEvolved&&fp.soulBombs===0&&fp.assetId==='weilai','新关卡重置通灵形态和放弹进度，保留角色选择');D.press('Enter');D.render(1);
+    ok(fp.asset.id==='weilai','新关卡切回普通形态素材');
+    fw.enemies.forEach(function(e){e.stun=100;});
+    for(var partial=0;partial<3;partial++){fw.bombs=[];fw.flames=[];D.press('Space');}
+    fw.bombs=[];fw.flames=[];fp.invuln=0;fp.shield=0;fp.starTime=0;BI.rules.hurtPlayer(fw,fp,'flame');D.tick(CFG.RESPAWN_DELAY+.2);D.render(1);
+    ok(fp.alive&&!fp.soulEvolved&&fp.soulBombs===3,'同一关阵亡重生保留尚未完成的通灵进度');
+    for(var complete=4;complete<=6;complete++){fw.bombs=[];fw.flames=[];D.press('Space');}
+    D.render(.05);   // 素材在渲染帧刷新，不画一帧就还挂着旧形态
+    ok(fp.soulEvolved&&fp.soulBombs===6&&fp.asset.id==='weilai-awakened','放满第 6 颗炸弹同样触发通灵',
+      'soulBombs='+fp.soulBombs+' evolved='+fp.soulEvolved+' alive='+fp.alive+' asset='+(fp.asset&&fp.asset.id)+
+      ' bombs='+fw.bombs.length+' level='+fw.match.level+' over='+fw.match.over+' briefing='+!!fw.briefing+' scene='+D.scene);
+    fw.bombs=[];fw.flames=[];fp.invuln=0;fp.shield=0;fp.starTime=0;BI.rules.hurtPlayer(fw,fp,'flame');D.tick(CFG.RESPAWN_DELAY+.2);D.render(1);
+    ok(fp.alive&&fp.soulEvolved&&fp.asset.id==='weilai-awakened','同关通灵后重生保持进化形态');
+    var adventureSummary=BI.match.summary(fw),resultWords=[],resultText=iconCtx.fillText;
+    iconCtx.fillText=function(s){resultWords.push(String(s));};BI.result.drawStats(iconCtx,{summary:adventureSummary},0,0,450);iconCtx.fillText=resultText;
+    ok(resultWords.includes('到达关卡')&&resultWords.includes('击败敌人')&&!resultWords.includes('最终比分'),
+      '闯关结算显示关卡与击败敌人，不误用双人比分');
+    ok(adventureSummary.kills===fw.stats.kills,'闯关结算击杀统计来自真实对局');
+    D.quickStart('adventure','FUTURE_RESET');
+    ok(!D.world.players[0].soulEvolved&&!D.world.players[0].soulBombs,'重新开始一场冒险时通灵成长清零');
+    ['xiaonuo','axiu','arui','xiaoyan','xiaotian'].forEach(function(id){
+      var loreMenu=BI.menu.create();loreMenu.charIndex[0]=loreMenu.chars.findIndex(function(ch){return ch.id===id;});
+      var words=[],savedText=iconCtx.fillText;iconCtx.fillText=function(s){words.push(String(s));};BI.menu.draw(iconCtx,loreMenu);iconCtx.fillText=savedText;
+      ok(words.includes(BI.CHARACTER_LORE[id].summary),'选角页可读到'+id+'的官网背景摘要');
+    });
+
+    /* ---------- 新增：开始界面壁纸 ---------- */
+    group('新增：开始界面壁纸');
+    (function () {
+      var wp=BI.assets.wallpaper;
+      ok(wp&&wp.file==='assets/ui/menu-wallpaper.png'&&wp.img&&/menu-wallpaper\.png$/.test(wp.img.src||''),
+        '壁纸路径指向 assets/ui 下的运行期素材',wp&&wp.file);
+      // 取景是纯函数：横图铺满近正方形的菜单，必须按比例裁且不越界
+      var rect=BI.assets.coverRect(3563,2068,CFG.VIEW_W,CFG.VIEW_H,.5);
+      ok(Math.abs(rect.w/rect.h-CFG.VIEW_W/CFG.VIEW_H)<1e-9,'裁切比例与画布一致，壁纸不会被拉伸变形');
+      ok(rect.x>=0&&rect.y>=0&&rect.x+rect.w<=3563+1e-9&&rect.y+rect.h<=2068+1e-9,'裁切矩形不会越出原图');
+      ok(rect.w>=CFG.VIEW_W*2&&rect.h>=CFG.VIEW_H*2,
+        '裁下来的区域仍大于 2 倍菜单尺寸（高清屏放大也不糊）',
+        Math.round(rect.w)+'x'+Math.round(rect.h));
+      var left=BI.assets.coverRect(3563,2068,CFG.VIEW_W,CFG.VIEW_H,0);
+      var right=BI.assets.coverRect(3563,2068,CFG.VIEW_W,CFG.VIEW_H,1);
+      ok(left.x===0&&Math.abs(right.x+right.w-3563)<1e-9,'focusX 取 0/1 时分别贴住原图左右两边');
+
+      // 接线：壁纸就绪时菜单整屏铺满画出来；缺失时退回渐变且照样能画
+      var marker=document.createElement('canvas');marker.width=8;marker.height=8;
+      var savedOk=wp.ok,savedCanvas=wp.canvas,calls=[],realDraw=iconCtx.drawImage;
+      iconCtx.drawImage=function(){calls.push(Array.prototype.slice.call(arguments));return realDraw.apply(this,arguments);};
+      wp.ok=true;wp.canvas=marker;
+      var painted=true;
+      try{BI.menu.draw(iconCtx,BI.menu.create());}catch(e){painted=false;}
+      ok(painted&&calls.some(function(a){return a[0]===marker&&a[3]===CFG.VIEW_W&&a[4]===CFG.VIEW_H;}),
+        '壁纸就绪时开始界面按整屏铺满绘制');
+      calls=[];wp.ok=false;
+      var fallbackOk=true;
+      try{BI.menu.draw(iconCtx,BI.menu.create());}catch(e){fallbackOk=false;}
+      ok(fallbackOk&&!calls.some(function(a){return a[0]===marker;}),
+        '壁纸缺失时开始界面退回渐变背景，不影响开局');
+      wp.ok=savedOk;wp.canvas=savedCanvas;iconCtx.drawImage=realDraw;
+    })();
+
+
+    group('新增：小炎吸火反弹（真实主循环）');
+    (function () {
+      D.quickStart('adventure','REFLECT');D.press('Enter');
+      var w=D.world,p=w.players[0];p.assetId='xiaoyan';
+      for(var r=1;r<CFG.ROWS-1;r++)for(var c=1;c<CFG.COLS-1;c++)G.set(w.map,c,r,BI.T.EMPTY);
+      w.map.landmark=null;w.bombs=[];w.flames=[];w.poison=[];
+      p.x=p.px=G.centerX(5);p.y=p.py=G.centerY(5);p.invuln=0;
+      var inRing=BI.entities.create('gugu',7,7,1),outside=BI.entities.create('gugu',8,5,1);
+      inRing.stun=outside.stun=100;w.enemies=[inRing,outside];
+      var hpIn=inRing.hp,hpOut=outside.hp;
+      D.press('KeyQ');
+      ok(p.flameGuard>0,'Q 键开启 4 秒吸火窗口');
+      // 在自己脚下真引爆一颗炸弹，走完整的爆炸→伤害→吸火链路
+      w.bombs=[{cx:5,cy:5,power:1,fuse:.05,fuseTotal:1,ownerId:'other',freeFor:null}];
+      D.tick(.25);D.render(.05);
+      ok(p.alive&&!p.flameGuard,'吸火窗口吃下这次爆炸，小炎本人不掉命');
+      ok(inRing.hp===hpIn-1&&outside.hp===hpOut,
+        '5×5 内的敌人吃到反弹伤害，圈外的不受影响','in='+inRing.hp+' out='+outside.hp);
+      ok(w.skillEffects.some(function(fx){return fx.type==='flameReflect';}),'反弹有独立的火焰范围特效');
+      p.invuln=0;w.bombs=[{cx:5,cy:5,power:1,fuse:.05,fuseTotal:1,ownerId:'other',freeFor:null}];
+      D.tick(.25);
+      ok(!p.alive,'吸火窗口用掉之后，第二次爆炸照常造成伤害（不是无敌）');
+    })();
+
+    /* ---------- 新增：平衡性数值 ---------- */
+    group('新增：平衡性数值与菜单提示一致');
+    ok(BI.SKILLS.xiaonuo.cd===12&&BI.SKILLS.axiu.cd===15&&BI.SKILLS.arui.cd===14&&
+       BI.SKILLS.xiaoyan.cd===12&&BI.SKILLS.xiaotian.cd===12,
+      '冷却：小诺12 / 阿修15 / 阿瑞14 / 小炎12 / 小天12 秒',
+      Object.keys(BI.SKILLS).map(function(id){return id+'='+BI.SKILLS[id].cd;}).join(' '));
+    ok(/最多三格/.test(BI.SKILLS.axiu.desc)&&/两格内/.test(BI.SKILLS.arui.desc),
+      '阿修与阿瑞的范围描述用同一套说法（中文数词）',BI.SKILLS.axiu.desc);
+    ok(/反弹/.test(BI.SKILLS.xiaoyan.desc)&&/5×5/.test(BI.SKILLS.xiaoyan.desc)&&!/火力/.test(BI.SKILLS.xiaoyan.desc),
+      '小炎描述改成吸收后反弹 5×5，不再写蓄火加火力',BI.SKILLS.xiaoyan.desc);
+    var cdText={xiaonuo:'冷却12秒',axiu:'冷却15秒',arui:'冷却14秒',xiaoyan:'冷却12秒',xiaotian:'冷却12秒'};
+    Object.keys(cdText).forEach(function(id){
+      var st=BI.menu.create();st.charIndex[0]=st.chars.findIndex(function(ch){return ch.id===id;});
+      var words=[],savedText=iconCtx.fillText;iconCtx.fillText=function(s){words.push(String(s));};
+      BI.menu.draw(iconCtx,st);iconCtx.fillText=savedText;
+      ok(words.some(function(s){return s.indexOf(cdText[id])>=0;}),'菜单里 '+id+' 显示「'+cdText[id]+'」',
+        words.filter(function(s){return s.indexOf('冷却')>=0;}).join(' | '));
+    });
+    // 关卡上方的「第 N 关」不许闪：低怪量警告只闪下面那行小字
+    (function () {
+      D.quickStart('adventure','NOBLINK');D.press('Enter');
+      var w=D.world;
+      w.enemies=[BI.entities.create('gugu',10,9,1)];
+      var label='第 '+w.match.level+' / '+CFG.ADVENTURE_LEVELS+' 关',labels=[],subs=[];
+      var savedText=BI.draw.text;
+      BI.draw.text=function(ctx,text,x,y,opts){
+        if(text===label)labels.push((opts||{}).fill);
+        if(text==='剩余敌人 1')subs.push((opts||{}).fill);
+        return savedText.apply(this,arguments);
+      };
+      for(var t=0;t<12;t++)BI.hud.drawFloating(iconCtx,w,t*.13);
+      BI.draw.text=savedText;
+    ok(labels.length===12&&new Set(labels).size===1,
+      '只剩 1 只敌人时「第 N 关」始终同一个颜色，不再闪烁',labels.join(','));
+    ok(labels[0]==='#ff7a6b','警告色仍然给到，只是不闪（稳定红色）',labels[0]);
+    ok(subs.length===12&&new Set(subs).size>1,
+      '剩敌警告改为闪下面那行「剩余敌人」，提示没有丢',subs.join(','));
+    // 敌人数正常时连警告都不该有：主标题保持稳定白
+    w.enemies=[BI.entities.create('gugu',10,9,1),BI.entities.create('gugu',11,9,1),BI.entities.create('gugu',12,9,1)];
+    labels=[];
+    BI.draw.text=function(ctx,text,x,y,opts){if(text===label)labels.push((opts||{}).fill);return savedText.apply(this,arguments);};
+    for(var t2=0;t2<12;t2++)BI.hud.drawFloating(iconCtx,w,t2*.13);
+    BI.draw.text=savedText;
+    ok(labels.length===12&&new Set(labels).size===1&&labels[0]==='#ffffff',
+      '还有 3 只敌人时主标题本来就是稳定白',labels.join(','));
+  })();
+
+    group('无敌碰撞与破盾保护实战');
+    D.quickStart('adventure','STAR_DAMAGE');D.startLevel(5);D.press('Enter');
+    var hitWorld=D.world,starHero=hitWorld.players[0];
+    for(var hr=1;hr<12;hr++)for(var hc=1;hc<14;hc++)G.set(hitWorld.map,hc,hr,BI.T.EMPTY);
+    hitWorld.map.landmark=null;hitWorld.bombs=[];hitWorld.flames=[];hitWorld.poison=[];
+    starHero.x=starHero.px=G.centerX(5);starHero.y=starHero.py=G.centerY(5);starHero.starTime=6;
+    var hitBoss=BI.entities.create('boss',5,5,5);hitBoss.stun=100;hitWorld.enemies=[hitBoss];
+    D.tick(1/60);D.render(.05);
+    ok(hitBoss.alive&&hitBoss.hp===7&&hitWorld.stats.kills===0,'真实对局中无敌碰撞8血BOSS仅扣1血');
+    D.tick(.4);ok(hitBoss.hp===7,'持续贴身期间BOSS受击保护阻止每帧扣血');
+    hitBoss.hp=8;hitBoss.shield=1;hitBoss.invuln=0;starHero.starTime=6;
+    D.tick(1/60);
+    ok(hitBoss.alive&&hitBoss.hp===8&&!hitBoss.shield&&hitBoss.invuln>1.4,'BOSS护盾先挡伤害，破盾后获得1.5秒保护');
+    D.press('Escape');var pauseProtection=hitBoss.invuln;D.tick(.5);
+    ok(hitBoss.invuln===pauseProtection,'暂停时破盾保护时间冻结');D.press('Escape');
+    D.tick(1.3);ok(hitBoss.hp===8,'BOSS破盾后持续接触1.3秒仍免伤');
+    D.tick(.3);D.render(.95);ok(hitBoss.hp===7&&hitBoss.alive,'保护结束后下一次接触仅扣1血，BOSS仍存活');
+    hitBoss.starTime=6;hitBoss.hp=8;hitBoss.shield=1;hitBoss.invuln=0;D.tick(.1);
+    ok(hitBoss.hp===8&&hitBoss.shield===1,'敌人处于无敌状态时，玩家星星不会绕过免伤或消耗护盾');
+    D.quickStart('versus','PLAYER_SHIELD_GRACE');var shieldWorld=D.world,victim=shieldWorld.players[0],striker=shieldWorld.players[1];
+    for(var sr=1;sr<12;sr++)for(var sc=1;sc<14;sc++)G.set(shieldWorld.map,sc,sr,BI.T.EMPTY);
+    shieldWorld.map.landmark=null;shieldWorld.bombs=[];
+    shieldWorld.players.forEach(function(p){p.x=p.px=G.centerX(5);p.y=p.py=G.centerY(5);p.invuln=0;});
+    victim.shield=1;striker.starTime=6;D.tick(.1);
+    ok(victim.alive&&victim.shield===0&&victim.invuln>1.3,'玩家护盾能抵挡无敌碰撞并获得保护');
+    D.tick(1.2);ok(victim.alive,'玩家持续被无敌对手触碰，在破盾保护内不死亡');
+    D.tick(.4);ok(!victim.alive&&shieldWorld.match.scores.p2===1,'破盾保护结束后才正常受伤并计分一次');
+
+    group('BOSS阶段实战与HUD');
+    var rageArt=BI.assets.readyEnemy('bossRage'),normalArt=BI.assets.enemyArt;
+    ok(rageArt&&rageArt.img.naturalWidth===normalArt.img.naturalWidth&&rageArt.img.naturalHeight===normalArt.img.naturalHeight,
+      '暴走怒火表情素材加载，画布尺寸与原素材一致');
+    var bossImages=[],savedBossDraw=iconCtx.drawImage;
+    iconCtx.drawImage=function(){bossImages.push(arguments[0]);return savedBossDraw.apply(this,arguments);};
+    [8,6,4,3].forEach(function(hp){var face=BI.entities.create('boss',5,5,5);face.hp=hp;BI.sprites.drawEnemy(iconCtx,face,0,1);});
+    iconCtx.drawImage=savedBossDraw;
+    ok(bossImages[0]===normalArt.img&&bossImages[1]===normalArt.img&&bossImages[2]===normalArt.img&&rageArt&&bossImages[3]===rageArt.img,
+      '4血保持普通表情，3血暴走才切换怒火和受伤素材');
+    if(rageArt){
+      rageArt.ok=false;bossImages=[];iconCtx.drawImage=function(){bossImages.push(arguments[0]);return savedBossDraw.apply(this,arguments);};
+      var fallbackBoss=BI.entities.create('boss',5,5,5);fallbackBoss.hp=3;BI.sprites.drawEnemy(iconCtx,fallbackBoss,0,1);
+      iconCtx.drawImage=savedBossDraw;rageArt.ok=true;
+      ok(bossImages[0]===normalArt.img,'暴走表情未加载时仍可正常显示鲁鲁旦');
+    }
+    D.quickStart('adventure','BOSS_PHASES');D.startLevel(5);D.press('Enter');
+    var pw=D.world,pb=pw.enemies[0];pw.players[0].invuln=100;
+    var phases=[];var savedPhase=pw.onBossPhase;
+    pw.onBossPhase=function(e,phase){phases.push(phase.id);savedPhase(e,phase);};
+    [8,7,6,5,4,3].forEach(function(hp){
+      if(pb.hp>hp){pb.invuln=0;pb.shield=0;pb.starTime=0;BI.rules.hurtEnemy(pw,pb);}
+      var phase=hp>6?1:hp>3?2:3;
+      var words=[],saved=iconCtx.fillText;
+      iconCtx.fillText=function(text){words.push(String(text));};BI.hud.drawFloating(iconCtx,pw,pw.time);iconCtx.fillText=saved;
+      D.render(.05);D.render(.95);
+      ok(pb.phase===phase&&words.indexOf('鲁鲁旦 · '+['','一 · 试探','二 · 认真','三 · 暴走'][phase])>=0,
+        '实际伤害降至 '+hp+' 血后HUD与行为阶段同步');
+    });
+    ok(phases.join(',')==='2,3'&&pw.skillEffects!==undefined,'阶段特效回调实际执行且每次转换只触发一次');
+    D.press('Escape');var phaseCooldown=pb.abilityCd;D.tick(.6);
+    ok(pb.abilityCd===phaseCooldown,'暂停时暴走毒叉倒计时冻结');D.press('Escape');
+    D.tick(.95);D.render(1);
+    ok(pw.poison.length>0&&!D.app.runtimeFault,'暴走阶段在真实主循环中持续施法与绘制');
+    D.startLevel(10);D.press('Enter');
+    ok(D.world.enemies[0].hp===8&&D.world.enemies[0].phase===1&&!D.world.poison.length,
+      '下一次BOSS战从8血试探重新开始，清除上场阶段和毒叉');
+
+    group('完整十关冒险：最终战 / 通关结算 / 重开');
+    D.quickStart('adventure','TEN_LEVEL_CAMPAIGN');D.press('Enter');
+    var campaign=D.world,previousTheme=campaign.theme;
+    for(var stage=1;stage<10;stage++){
+      campaign.players[0].invuln=100;
+      campaign.enemies.forEach(function(e){BI.rules.killEnemy(campaign,e);});
+      D.tick(CFG.LEVEL_CLEAR_DELAY+.2);
+      ok(campaign.match.level===stage+1&&!campaign.match.over&&campaign.theme!==previousTheme,
+        '清完第 '+stage+' 关后进入下一关且场景不重复');
+      previousTheme=campaign.theme;D.press('Enter');
+    }
+    ok(campaign.enemies.length===5&&campaign.enemies[0].type==='boss'&&campaign.enemies[0].hp===8,
+      '第10关最终战生成8血BOSS和四只随从');
+    var finalWords=[],savedFinal=iconCtx.fillText;iconCtx.fillText=function(t){finalWords.push(String(t));};
+    BI.hud.drawFloating(iconCtx,campaign,campaign.time);iconCtx.fillText=savedFinal;
+    ok(finalWords.some(function(t){return t.indexOf('最终战')>=0;}),'最终战HUD明确标识冒险终点');
+    BI.rules.killEnemy(campaign,campaign.enemies[0]);D.tick(.1);
+    ok(!campaign.match.over,'最终BOSS倒下后仍需击败随从');
+    campaign.enemies.forEach(function(e){BI.rules.killEnemy(campaign,e);});
+    var survivor=campaign.players[0];survivor.invuln=0;survivor.shield=0;survivor.starTime=0;
+    campaign.bombs=[{cx:G.col(survivor.x),cy:G.row(survivor.y),power:1,fuse:.1,ownerId:'p1',freeFor:'p1'}];
+    D.tick(1/60);var finalLives=survivor.lives,finalFuse=campaign.bombs[0].fuse;
+    ok(campaign.match.over&&campaign.match.winner==='p1'&&campaign.match.level===10,'第10关清场立即判定冒险通关，不进入第11关');
+    D.tick(.2);
+    ok(survivor.lives===finalLives&&campaign.bombs[0].fuse===finalFuse,'通关等待期间残留炸弹不会扣命');
+    D.tick(CFG.RESULT_DELAY);D.render(1);
+    ok(D.scene==='result'&&D.app.result.summary.title==='冒险通关'&&D.app.result.summary.level===10,
+      '十关冒险进入胜利结算，保留正确关卡和统计');
+    finalWords=[];iconCtx.fillText=function(t){finalWords.push(String(t));};BI.result.drawStats(iconCtx,D.app.result,0,0,450);iconCtx.fillText=savedFinal;
+    ok(finalWords.includes('完成关卡')&&finalWords.includes('10 / 10关'),'胜利结算显示完成10/10关');
+    D.tick(.5);D.press('Enter');
+    ok(D.scene==='playing'&&D.world.match.level===1&&!D.world.match.over,'通关后再来一局从第1关重新开始');
+
+    group('生命统计与敌方无敌碰撞实战');
+    D.quickStart('adventure','MAX_FIVE_LIVES');D.press('Enter');
+    var lifeWorld=D.world,lifeHero=lifeWorld.players[0];
+    function checkLife(expected,label){
+      var hearts=0,savedHeart=BI.hud.heart;BI.hud.heart=function(){hearts++;};
+      BI.hud.draw(iconCtx,lifeWorld,{});BI.hud.heart=savedHeart;
+      ok(lifeHero.lives===expected&&hearts===expected&&BI.match.summary(lifeWorld).players[0].lives===expected,label);
+    }
+    checkLife(3,'开局实际生命、爱心和统计均为3');
+    for(var fruitIndex=0;fruitIndex<5;fruitIndex++){
+      lifeWorld.items=[{type:'fruit',c:G.col(lifeHero.x),r:G.row(lifeHero.y)}];D.tick(1/60);
+    }
+    checkLife(5,'连续拾取果实后实际生命、爱心和统计均不超过5');
+    ok(lifeHero.shield===1,'满血果实转换为护盾');
+    D.startLevel(2);D.press('Enter');checkLife(5,'换关补命后依然最多5条命');
+    lifeHero.invuln=0;lifeHero.shield=0;BI.rules.hurtPlayer(lifeWorld,lifeHero,'flame');
+    BI.rules.hurtPlayer(lifeWorld,lifeHero,'contact');checkLife(4,'同帧重复伤害只扣一命，显示与统计均为4');
+    D.tick(CFG.RESPAWN_DELAY+.2);checkLife(4,'重生不额外扣命或补命');ok(lifeHero.alive,'仍有生命时正常重生');
+    ['gugu','claude','oupao','boss'].forEach(function(type){
+      D.quickStart('adventure','NPC_STAR_'+type);D.press('Enter');
+      var sw=D.world,hero=sw.players[0];
+      for(var r=1;r<12;r++)for(var c=1;c<14;c++)G.set(sw.map,c,r,BI.T.EMPTY);
+      sw.map.landmark=null;sw.bombs=[];sw.flames=[];sw.poison=[];
+      hero.x=hero.px=G.centerX(1);hero.y=hero.py=G.centerY(1);hero.invuln=0;
+      var enemy=BI.entities.create(type,5,5,5);enemy.bombCd=100;sw.enemies=[enemy];sw.items=[{c:5,r:5,type:'star'}];
+      D.tick(1/60);enemy.stun=100;
+      ok(enemy.starTime>5.9&&!sw.items.length,type+' 在实际主循环中拾取无敌道具');
+      hero.x=hero.px=enemy.x;hero.y=hero.py=enemy.y;hero.shield=1;D.tick(1/60);D.render(1);
+      ok(hero.alive&&hero.lives===3&&!hero.shield&&hero.invuln>1.4,type+' 无敌碰撞先破盾且提供保护');
+      D.tick(1.3);ok(hero.alive&&hero.lives===3,type+' 破盾保护期间持续接触不扣命');
+      D.tick(.3);ok(!hero.alive&&hero.lives===2,type+' 保护结束后仅扣一命');
+      hero.alive=true;hero.invuln=0;hero.starTime=6;D.tick(.1);
+      ok(hero.alive&&hero.lives===2&&enemy.alive,type+' 双方无敌时相互免疫');
+      enemy.starTime=0;hero.starTime=0;hero.invuln=0;D.tick(.1);
+      ok(hero.alive&&hero.lives===2,type+' 无敌结束后普通接触恢复无伤害');
+    });
+
+    group('角色背面：真实按键 / 通灵形态 / 素材回退');
+    D.quickStart('adventure','BACK_DIRECTIONS');D.press('Enter');
+    var backWorld=D.world,backHero=backWorld.players[0];backWorld.map.landmark=null;
+    for(var br=1;br<12;br++)for(var bc=1;bc<14;bc++)G.set(backWorld.map,bc,br,BI.T.EMPTY);
+    backWorld.enemies=[BI.entities.create('gugu',13,11,1)];backWorld.enemies[0].stun=100;
+    ok(BI.assets.selectable().length===6&&!BI.assets.selectable().some(function(id){return /-back$/.test(id);}),
+      '背面素材为方向变体，不增加重复可选角色');
+    ['xiaonuo','axiu','arui','xiaoyan','xiaotian','weilai','weilai-awakened'].forEach(function(visual){
+      backHero.assetId=visual==='weilai-awakened'?'weilai':visual;backHero.soulEvolved=visual==='weilai-awakened';
+      backHero.soulAwakenTime=0;backHero.invuln=100;backHero.facingDir='down';backHero.facing=1;
+      backHero.x=backHero.px=G.centerX(7);backHero.y=backHero.py=G.centerY(7);
+      D.render(1);ok(backHero.asset&&backHero.asset.id===visual,visual+' 朝下使用正面素材');
+      D.hold('ArrowUp',.12);D.render(.95);
+      var back=BI.assets.ready(visual+'-back');
+      ok(back&&backHero.asset===back&&back.img.naturalWidth>500&&back.sprite&&back.flipForLeft===false,
+        visual+' 朝上使用清晰独立背面，不做左右镜像');
+      D.tick(.1);D.render(.05);ok(backHero.asset===back,visual+' 松开方向后保持背面');
+      var stationaryX=backHero.x,stationaryY=backHero.y;back.ok=false;D.render(1);
+      ok(backHero.asset.id===visual&&backHero.x===stationaryX&&backHero.y===stationaryY,
+        visual+' 背面暂未加载时回退正面，位置和碰撞不变');
+      back.ok=true;D.render(1);
+      D.hold('ArrowDown',.12);D.render(1);ok(backHero.asset.id===visual,visual+' 向下切回正面');
+      D.hold('ArrowLeft',.12);D.render(1);ok(backHero.asset.id===visual&&backHero.facing===-1,visual+' 向左保留原有显示');
+      D.hold('ArrowRight',.12);D.render(1);ok(backHero.asset.id===visual&&backHero.facing===1,visual+' 向右保留原有显示');
+    });
+    D.quickStart('versus','BACK_TWO_PLAYERS');
+    var backDuel=D.world;backDuel.map.landmark=null;
+    for(var dr=1;dr<12;dr++)for(var dc=1;dc<14;dc++)G.set(backDuel.map,dc,dr,BI.T.EMPTY);
+    backDuel.players.forEach(function(p,i){p.x=p.px=G.centerX(5+i*4);p.y=p.py=G.centerY(7);});
+    D.hold('KeyW',.12);D.render(1);
+    ok(/-back$/.test(backDuel.players[1].asset.id)&&!/-back$/.test(backDuel.players[0].asset.id),'双人2P的W只切换2P背面，不影响1P');
+    D.hold('ArrowUp',.12);D.render(1);ok(backDuel.players.every(function(p){return /-back$/.test(p.asset.id);}),
+      '双人模式双方可以独立朝上显示背面');
+
+    if(new URLSearchParams(location.search).has('stress')) {
+      group('持续运行：全部六角色与普通关 / BOSS关');
+      var stressRuns=0,stressSeconds=0,stressBad=[],stressBombs=0;
+      BI.assets.selectable().forEach(function(id){[3,5,6,10].forEach(function(level){
+        try {
+          D.quickStart('adventure','STRESS_'+id+'_'+level);D.startLevel(level);D.press('Enter');
+          var aw=D.world,ap=aw.players[0];ap.assetId=id;
+          if(level===5||level===10){
+            var se=aw.enemies[0];se.hp=level===5?6:3;BI.entities.syncBossPhase(aw,se);
+          }
+          for(var sec=0;sec<60;sec++) {
+            // 十关已通关时另开一场，继续覆盖完整60秒战斗，而不是把胜利当异常。
+            if(aw.match.over){
+              if(aw.match.winner!=='p1')throw Error('unexpected defeat');
+              D.quickStart('adventure','STRESS_REPLAY_'+id+'_'+level+'_'+sec);D.startLevel(level);D.press('Enter');
+              aw=D.world;ap=aw.players[0];ap.assetId=id;
+              if(level===5||level===10){var replayBoss=aw.enemies[0];replayBoss.hp=level===5?6:3;BI.entities.syncBossPhase(aw,replayBoss);}
+            }
+            if(aw.briefing)D.press('Enter');
+            ap.invuln=120;ap.lives=5;ap.maxBombs=8;ap.power=3;
+            // 使用真实空地与正常放弹路径，让不同阵营的炸弹持续形成连锁。
+            var targets=aw.enemies.filter(function(e){return e.alive;});
+            if(targets.length&&sec%3===0){
+              var target=targets[sec%targets.length],tc=G.col(target.x),tr=G.row(target.y);
+              if(!BI.rules.bombAt(aw,tc,tr)&&G.at(aw.map,tc,tr)===BI.T.EMPTY){ap.x=ap.px=G.centerX(tc);ap.y=ap.py=G.centerY(tr);}
+            }
+            if(BI.rules.tryPlaceBomb(aw,ap))stressBombs++;
+            if(!ap.skillCd)BI.skills.cast(aw,ap);
+            var direction=['ArrowRight','ArrowDown','ArrowLeft','ArrowUp'][sec%4];
+            D.hold(direction,1);D.render(sec%2?.05:.95);
+            if(!isFinite(ap.x)||!isFinite(ap.y)||D.app.runtimeFault||
+              (D.scene!=='playing'&&!(D.scene==='result'&&aw.match.winner==='p1')))throw Error('invalid world');
+            stressSeconds++;
+          }
+          stressRuns++;
+        }catch(err){stressBad.push(id+'@'+level+': '+err.message);}
+      });});
+      ok(stressRuns===24&&stressSeconds===1440&&stressBombs>100&&stressBad.length===0,
+        '六角色×四种起始关卡累计运行24分钟逻辑时间，持续投弹/技能/换关无异常',stressBad.join(';'));
+      lines.push('STRESS runs='+stressRuns+' seconds='+stressSeconds+' bombs='+stressBombs);
+    }
+
+    /* ---------- 18. 全程零报错 ---------- */
+    group('18. 运行期报错');
+    ok(window.__errs.length === 0, '整个测试过程没有任何 JS 报错',
+       window.__errs.join(' | '));
+
+  } catch (e) {
+    fail++;
+    lines.push('FAIL  测试脚本自身抛异常 → ' + (e && e.stack));
+  }
+
+  lines.push('');
+  lines.push('SUMMARY pass=' + pass + ' fail=' + fail);
+  document.getElementById('out').textContent =
+    'BI_TEST_BEGIN\n' + lines.join('\n') + '\nBI_TEST_END';
+});
+</script>
+</body>
+</html>
