@@ -1,10 +1,15 @@
 # Q版泡泡堂 · BombIt
 
+![version](https://img.shields.io/badge/version-v1.0-5ec8f0)
+
 一个用 **HTML5 Canvas + 原生 JavaScript** 写的 Q 版炸弹人对战小游戏：单人闯关打怪、单人计时拆砖、双人同屏对战，共六位精灵角色、十关冒险、三张主题地图。
 
 **零安装、零依赖、零构建、零联网** —— 整个文件夹拷到任何电脑，双击就能玩。
 
 作者：**初霁**
+
+> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v1.0.zip`，解压后双击里面的 `启动游戏.bat` 即可（有音乐）。
+> 也可以直接 `git clone` 本仓库，双击 `index.html` —— 两种方式都不需要安装任何东西。
 
 ![开始界面](docs/screenshot-menu.png)
 

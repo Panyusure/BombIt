@@ -318,7 +318,7 @@
           fill: 'rgba(200,210,240,.6)'
         });
 
-      D.text(ctx, '作者：初霁', W / 2, H - 16, {
+      D.text(ctx, (CFG.VERSION ? CFG.VERSION + '　·　' : '') + '作者：初霁', W / 2, H - 16, {
         font: '12px "Microsoft YaHei", sans-serif',
         align: 'center', baseline: 'middle',
         fill: 'rgba(200,210,240,.5)'

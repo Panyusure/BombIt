@@ -1189,7 +1189,9 @@ window.addEventListener('load', function () {
     ok(menuWords.some(function(s){return s.indexOf('放弹6次或击杀通灵')>=0;}),
       '菜单通灵次数直接读配置（显示 6 次，不再写死 10）',
       menuWords.filter(function(s){return s.indexOf('通灵')>=0;}).join(' | '));
-    ok(menuWords.indexOf('作者：初霁')>=0,'开始界面署名作者',menuWords.join(' | '));
+    ok(menuWords.some(function(s){return s.indexOf('作者：初霁')>=0;}),'开始界面署名作者',menuWords.join(' | '));
+    ok(menuWords.some(function(s){return s.indexOf(CFG.VERSION+'　·　作者：初霁')===0;}),
+       '开始界面同时显示版本号（读 CFG.VERSION，不写死）', CFG.VERSION+' → '+menuWords.filter(function(s){return s.indexOf('初霁')>=0;}).join(' | '));
     D.press('Enter');D.press('Enter');
     var fw=D.world,fp=fw.players[0];
     ok(fp.assetId==='weilai'&&!fp.soulEvolved,'鼠标选中未来后可正常开始普通形态对局');
