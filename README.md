@@ -10,7 +10,7 @@
 
 > **使用范围**：本项目仅供个人学习与娱乐使用，请勿商用盈利。角色与敌人等第三方素材的权利归原权利人所有。
 
-> **在线游玩（待启用）**：[GitHub Pages](https://panyusure.github.io/BombIt/)。私有仓库当前受账户套餐限制，尚未完成部署。
+> **在线游玩**：[GitHub Pages](https://panyusure.github.io/BombIt/)
 >
 > **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v1.0.zip`，解压后双击里面的 `启动游戏.bat` 即可。
 > 也可以直接 `git clone` 本仓库，双击 `index.html` —— 两种方式都不需要安装任何东西。
@@ -23,7 +23,7 @@
 
 | 方式 | 操作 |
 |---|---|
-| 在线玩（待启用） | [GitHub Pages](https://panyusure.github.io/BombIt/)，部署完成后可直接游玩 |
+| 在线玩 | 打开 [GitHub Pages](https://panyusure.github.io/BombIt/) 即可开始 |
 | **推荐** | 下载解压后双击 `启动游戏.bat` |
 | 直接玩 | 双击 `index.html`（Chrome / Edge） |
 
