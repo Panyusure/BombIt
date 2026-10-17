@@ -72,11 +72,12 @@ function archive(BI, s, id, file, directory, receipt, agent) {
   const meta = s.recording || storage.recording(agent || 'legacy', fs.statSync(file).mtime.toISOString());
   if (agent) meta.agent = storage.recording(agent).agent;
   const outcome = w.match.over ? w.match.winner === 'draw' ? 'draw' : w.match.winner === 'p1' ? 'win' : 'loss' : 'stopped';
-  Object.assign(meta, { sourceSession: id, endedAt: new Date().toISOString(), outcome });
+  Object.assign(meta, { sourceSession: id, endedAt: new Date().toISOString(), outcome,
+    character: s.config.chars[0], characters: storage.characters(s.config) });
   s.recording = meta;
   const folder = storage.locations(directory).replays;
   fs.mkdirSync(folder, { recursive: true });
-  const target = path.join(folder, storage.basename(meta, s.config.mode, outcome));
+  const target = path.join(folder, storage.basename(meta, s.config, outcome));
   meta.name = path.basename(target, '.replay.json');
   const oldReceipt = receipt || s.lastResponse;
   const data = Object.assign(replayData(s), { finalSnapshot: s.snapshot,
@@ -119,10 +120,12 @@ function handle(BI, request, directory, memory) {
   if (op === 'new') requireThat(request.agent === undefined || typeof request.agent === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(request.agent),
     'INVALID_AGENT', 'agent must use 1–24 lowercase letters, digits or hyphens, starting with a letter');
   const meta = op === 'new' ? storage.recording(request.agent || 'agent') : null;
+  const config = op === 'new' ? normalizeConfig(request) : null;
+  if (meta) Object.assign(meta, { character: config.chars[0], characters: storage.characters(config) });
   if (op === 'new' && request.session && !directory && !process.env.BOMBIT_SESSION_DIR) {
     requireThat(false, 'AUTOMATIC_SESSION_NAME', 'Omit --session when creating a game; --agent selects the name and the CLI generates a standard session ID');
   }
-  if (op === 'new' && id === undefined) id = `${storage.stamp(meta.startedAt)}-${meta.agent}-${request.mode || 'adventure'}-${meta.id}`;
+  if (op === 'new' && id === undefined) id = `${storage.stem(meta, config)}-${meta.id}`;
   const file = sessionPath(id, directory);
   const loadDisk = () => fs.existsSync(file) ? read(file) : restoreArchive(BI, id, directory) || read(file);
   const load = () => memory?.sessions.get(id)?.s || loadDisk();
@@ -147,7 +150,6 @@ function handle(BI, request, directory, memory) {
       { state: BI.observe(w, !!request.assist) });
   }
   if (op === 'new') {
-    const config = normalizeConfig(request);
     return mutate(() => {
       requireThat(!memory?.sessions.get(id)?.s, 'SESSION_EXISTS', 'This session already exists');
       requireThat(!fs.existsSync(file) && !storage.findReplay(id, directory), 'SESSION_EXISTS', 'This session already exists; choose a different name');

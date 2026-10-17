@@ -32,12 +32,15 @@ node cli/bombit.cjs act --session $session --wait --frames 60 --json
 | `.bombit/cache/browser-replays/current.js` | 浏览器只缓存最近一次观看的回放，可覆盖、可再生成 |
 | `examples/`、`tests/`、`tools/` | 可复用的 agent、测试与维护源码，不是运行时产物 |
 
-正式回放统一命名为 `YYYYMMDD-HHMMSS-agent-mode-result-id.replay.json`：
+正式回放统一命名为 `YYYYMMDD-HHMMSS-agent-mode-character-result-id.replay.json`：
 
 - 时间使用北京时间、对局开始时间。旧档迁移若缺少开始时间，采用旧文件修改时间，并在文件内保留原会话编号。
 - `agent` 用小写英文、数字、连字符，例如 `deepseek`、`codex`、`reference`。开局通过 `--agent` 提供，由程序生成会话与回放名称，不自创 `test1/final2/backup` 名称。
 - `mode` 为 `dig/adventure/versus`；`result` 为 `win/loss/draw/stopped`；最后六位 ID 防止同秒重名。
-- 例：`20261017-213045-deepseek-adventure-win-a1b2c3.replay.json`。不要手工改名或复制第二份。
+- `character` 是实际使用的角色 ID，如 `xiaonuo/arui/weilai`；双人对战按 P1、P2 顺序写成 `xiaonuo-vs-axiu`。会话编号也包含角色；回放元数据中的 `recording.character` 为 P1 角色，`recording.characters` 为实际参战角色列表。
+- 例：`20261017-213045-deepseek-adventure-xiaonuo-win-a1b2c3.replay.json`。不要手工改名或复制第二份。
+
+旧回放可先运行 `node tools/migrate-replay-names.cjs` 预览，再加 `--apply` 自动按存档内实际角色迁移命名与元数据；不改变动作、状态或校验值，不保留旧文件副本或旧名兼容入口。自定义目录可加 `--directory PATH`。
 
 正常游玩只消费命令返回的数据，不把每一步状态写成 JSON、日志或文本；不要每次观看都另存回放。禁止向项目根目录、`.play/`、`.verify/` 散放临时脚本、截图、状态和浏览器配置。
 

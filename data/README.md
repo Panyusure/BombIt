@@ -2,9 +2,9 @@
 
 `replays/` 是正式对局唯一的长期存档目录。每局保留一个 `.replay.json`，同时包含完整动作、最终状态和校验信息；可拖入 `replay.html` 观看。
 
-命名：`YYYYMMDD-HHMMSS-agent-mode-result-id.replay.json`。时间为北京时间、对局开始时间；agent 名只用小写英文、数字和连字符；模式为 `dig/adventure/versus`，结果为 `win/loss/draw/stopped`；最后六位用于避免重名。
+命名：`YYYYMMDD-HHMMSS-agent-mode-character-result-id.replay.json`。时间为北京时间、对局开始时间；agent 名只用小写英文、数字和连字符；模式为 `dig/adventure/versus`，角色为实际角色 ID，结果为 `win/loss/draw/stopped`；最后六位用于避免重名。双人角色按 P1/P2 顺序写成 `xiaonuo-vs-axiu`。
 
-例如：`20261017-213045-deepseek-adventure-win-a1b2c3.replay.json`。归档后的唯一对外名称就是文件名去掉 `.replay.json`，旧会话名只在 `recording.sourceSession` 中追溯，不能继续作为打开入口。旧档缺少开始时间时，迁移采用旧文件修改时间。
+例如：`20261017-213045-deepseek-adventure-xiaonuo-win-a1b2c3.replay.json`。归档后的唯一对外名称就是文件名去掉 `.replay.json`，旧会话名只在 `recording.sourceSession` 中追溯，不能继续作为打开入口。旧档缺少开始时间时，迁移采用旧文件修改时间。需要统一旧回放时使用 `node tools/migrate-replay-names.cjs --apply`，不手动改名。
 
 运行中的续玩数据位于 `.bombit/sessions/`，结束并验证归档后删除。临时动作探针、日志和截图只能放 `.bombit/tmp/games/<session>/`。测试文件位于 `.bombit/tmp/tests/` 并由测试自动清理。浏览器回放仅缓存一份 `.bombit/cache/browser-replays/current.js`，可再生成。
 

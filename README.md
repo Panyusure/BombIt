@@ -94,7 +94,7 @@ node cli/bombit.cjs act --session $session --move down --frames 12 --json
 - Agent 高速接入：`node cli/bombit.cjs serve --memory`，免去逐步落盘；`batch` 一次提交动作数组，`path` 提交相邻格路线，`goTo` 自动走到指定格。需要恢复点时用 `checkpoint`，结束时用 `finish`。
 - Agent 接入协议、双人控制与存档说明：[CLI 与 Agent 使用说明](docs/CLI与Agent.md)。
 - 在游戏内观看 agent 对局：点击开始菜单右上角「对局回放」，选择或拖入回放 JSON；「返回游戏」保留菜单选择。也可双击 `观看回放.bat` 打开最近一局，支持调速、进度跳转和关卡标记。
-- 对局结算自动只留 `data/replays/` 中一个规范命名回放；中止时执行 `finish --session 对局名 --json`。临时数据统一进入 `.bombit/tmp/`，测试成功自动清理。目录与命名规则见 [本地数据说明](data/README.md) 和 [Agent 约定](AGENTS.md)。
+- 对局结算自动只留 `data/replays/` 中一个含 Agent、模式、实际角色与结果的规范命名回放；中止时执行 `finish --session 对局名 --json`。临时数据统一进入 `.bombit/tmp/`，测试成功自动清理。目录与命名规则见 [本地数据说明](data/README.md) 和 [Agent 约定](AGENTS.md)。
 
 ## 跑测试
 

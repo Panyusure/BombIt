@@ -18,7 +18,9 @@ function recording(agent = 'agent', startedAt = new Date().toISOString()) {
   if (typeof agent !== 'string' || !/^[a-z][a-z0-9-]{0,23}$/.test(agent)) throw new Error('agent must use 1–24 lowercase letters, digits or hyphens, starting with a letter');
   return { id: crypto.randomBytes(3).toString('hex'), agent, startedAt };
 }
-function basename(meta, mode, outcome) { return `${stamp(meta.startedAt)}-${meta.agent}-${mode}-${outcome}-${meta.id}.replay.json`; }
+function characters(config) { return config.chars.slice(0, config.mode === 'versus' ? 2 : 1); }
+function stem(meta, config) { return `${stamp(meta.startedAt)}-${meta.agent}-${config.mode}-${characters(config).join('-vs-')}`; }
+function basename(meta, config, outcome) { return `${stem(meta, config)}-${outcome}-${meta.id}.replay.json`; }
 function findReplay(id, directory) {
   const folder = locations(directory).replays;
   if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) return null;
@@ -37,4 +39,4 @@ function scratch(prefix) {
   const root = locations().tests; fs.mkdirSync(root, { recursive: true });
   return fs.mkdtempSync(path.join(root, prefix + '-'));
 }
-module.exports = { WORK, locations, stamp, recording, basename, findReplay, removeInside, scratch };
+module.exports = { WORK, locations, stamp, recording, characters, stem, basename, findReplay, removeInside, scratch };

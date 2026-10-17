@@ -240,7 +240,7 @@ test('reference agent wins a real game solely through JSONL and exports a portab
   assert.equal(verification.verified, true); assert.equal(verification.state.bricksLeft, 0);
   assert.equal(verification.state.match.winner, 'p1'); assert.ok(verification.state.players[0].lives >= 3);
   assert.equal(fs.existsSync(sessionPath(session,directory)), false);
-  assert.match(path.basename(replay), /^\d{8}-\d{6}-reference-dig-win-[0-9a-f]{6}\.replay\.json$/);
+  assert.match(path.basename(replay), /^\d{8}-\d{6}-reference-dig-arui-win-[0-9a-f]{6}\.replay\.json$/);
   const canonical=path.basename(replay,'.replay.json');
   assert.equal(handle(runtime(),{op:'state',session:canonical},directory).archived,true);
   assert.throws(()=>handle(runtime(),{op:'state',session},directory),{code:'SESSION_NOT_FOUND'});
@@ -252,7 +252,7 @@ test('finish leaves one standard replay, cleans per-game scratch, and cannot res
   const gameTemp=path.join(storage.locations().games,id);fs.mkdirSync(gameTemp,{recursive:true});fs.writeFileSync(path.join(gameTemp,'state.json'),'scratch');
   const result=handle(B,{op:'finish',session:id},directory);
   assert.equal(result.verified,true);assert.equal(result.archived,true);
-  assert.match(path.basename(result.replayFile),/^\d{8}-\d{6}-codex-dig-stopped-[0-9a-f]{6}\.replay\.json$/);
+  assert.match(path.basename(result.replayFile),/^\d{8}-\d{6}-codex-dig-xiaonuo-stopped-[0-9a-f]{6}\.replay\.json$/);
   assert.equal(result.session,path.basename(result.replayFile,'.replay.json'));
   assert.equal(fs.existsSync(gameTemp),false);assert.equal(fs.existsSync(sessionPath(id,directory)),false);
   assert.equal(handle(B,{op:'finish',session:result.session},directory).replayFile,result.replayFile);
@@ -268,7 +268,49 @@ test('archive verification failure retains the unique resumable save',()=>{
 });
 test('formal sessions are generated consistently and require a valid agent name',()=>{
   const B=runtime(),r=handle(B,{op:'new',agent:'deepseek',mode:'dig',seed:'names'},directory);
-  assert.match(r.session,/^\d{8}-\d{6}-deepseek-dig-[0-9a-f]{6}$/);
+  assert.match(r.session,/^\d{8}-\d{6}-deepseek-dig-xiaonuo-[0-9a-f]{6}$/);
   assert.throws(()=>handle(B,{op:'new',session:'final2',agent:'codex'}),{code:'AUTOMATIC_SESSION_NAME'});
   assert.throws(()=>handle(B,{op:'new',agent:'Not Valid'},directory),{code:'INVALID_AGENT'});
+});
+
+test('session and archived names identify each selected character and both versus players',()=>{
+  const B=runtime();
+  for(const character of ['xiaonuo','axiu','arui','xiaoyan','xiaotian','weilai']) {
+    const created=handle(B,{op:'new',agent:'names',mode:'dig',character,seed:'characters'},directory);
+    assert.ok(created.session.includes('-dig-'+character+'-'));
+    const result=handle(B,{op:'finish',session:created.session},directory);
+    assert.ok(result.session.includes('-dig-'+character+'-stopped-'));
+    const recording=JSON.parse(fs.readFileSync(result.replayFile,'utf8')).recording;
+    assert.equal(recording.character,character); assert.deepEqual(recording.characters,[character]);
+    assert.equal(handle(B,{op:'replay',session:result.session},directory).verified,true);
+  }
+  const created=handle(B,{op:'new',agent:'names',mode:'versus',character:'weilai',character2:'xiaotian',seed:'duel-names'},directory);
+  assert.ok(created.session.includes('-versus-weilai-vs-xiaotian-'));
+  const result=handle(B,{op:'finish',session:created.session},directory);
+  assert.ok(result.session.includes('-versus-weilai-vs-xiaotian-stopped-'));
+  const saved=JSON.parse(fs.readFileSync(result.replayFile,'utf8'));
+  assert.deepEqual(saved.recording.characters,['weilai','xiaotian']);
+});
+
+test('legacy names migrate without changing replay data, aliases or file count',()=>{
+  const folder=path.join(scratch,'migration'), B=runtime();
+  const start=handle(B,{op:'new',agent:'migrate',mode:'adventure',character:'xiaotian',seed:'migration'},folder);
+  handle(B,{op:'act',session:start.session,frames:12},folder);
+  const finished=handle(B,{op:'finish',session:start.session},folder), raw=JSON.parse(fs.readFileSync(finished.replayFile,'utf8'));
+  const payload=hash({config:raw.config,history:raw.history,finalHash:raw.finalHash,finalSnapshot:raw.finalSnapshot});
+  const oldFile=finished.replayFile.replace('-xiaotian-','-'), oldName=path.basename(oldFile,'.replay.json');
+  raw.recording.name=oldName; delete raw.recording.character; delete raw.recording.characters;
+  Object.assign(raw.receipt,{session:oldName,replayFile:oldFile});
+  fs.renameSync(finished.replayFile,oldFile);fs.writeFileSync(oldFile,JSON.stringify(raw));
+  const {migrate}=require('../tools/migrate-replay-names.cjs'), replays=storage.locations(folder).replays;
+  const preview=migrate(replays);assert.equal(preview[0].applied,false);assert.equal(fs.existsSync(oldFile),true);
+  migrate(replays,true);
+  assert.equal(fs.existsSync(oldFile),false);assert.equal(fs.readdirSync(replays).length,1);
+  const updated=JSON.parse(fs.readFileSync(finished.replayFile,'utf8'));
+  assert.equal(hash({config:updated.config,history:updated.history,finalHash:updated.finalHash,finalSnapshot:updated.finalSnapshot}),payload);
+  assert.equal(updated.receipt.session,finished.session);assert.equal(updated.receipt.replayFile,finished.replayFile);
+  assert.equal(updated.recording.sourceSession,raw.recording.sourceSession);
+  assert.equal(handle(B,{op:'replay',session:finished.session},folder).verified,true);
+  assert.throws(()=>handle(B,{op:'state',session:oldName},folder),{code:'SESSION_NOT_FOUND'});
+  migrate(replays,true);assert.equal(fs.readdirSync(replays).length,1);
 });
