@@ -2,15 +2,15 @@
  * result.js —— 结算界面
  *
  * 胜负横幅 + 本局数据 + 「再来一局 / 返回菜单」。
- * 键盘和鼠标都能用。
+ * 视觉：Motion UI 的赛后战报，奶油纸 + 胜者色硬阴影 + 数据表。
  * ============================================================ */
 (function (BI) {
   'use strict';
 
-  var CFG = BI.config, D = BI.draw, C = CFG.C;
+  var CFG = BI.config, D = BI.draw, C = CFG.C, U = BI.ui;
 
-  var CARD = { w: 520, h: 384 };
-  var BTN = { w: 200, h: 52, gap: 24 };
+  var CARD = { w: 560, h: 430 };
+  var BTN = { w: 210, h: 52, gap: 20 };
 
   function cardRect() {
     return {
@@ -30,43 +30,42 @@
   var result = BI.result = {
 
     create: function (summary) {
-      var st = {
+      return {
         t: 0,
-        appear: 0,                 // 0 -> 1 的入场动画
+        appear: 0,
         summary: summary,
         confetti: result.makeConfetti(summary),
         hover: -1
       };
-      return st;
     },
 
     makeConfetti: function (summary) {
-      var win = summary.winner === 'p1' || summary.winner === 'p2';
+      var win = summary.mode === 'versus'
+        ? (summary.winner === 'p1' || summary.winner === 'p2')
+        : summary.winner === 'p1';
       if (!win) return [];
       var out = [];
-      for (var i = 0; i < 60; i++) {
+      var colors = [U.C.yellow, U.C.cyan, U.C.pink, U.C.green, U.C.orange, U.C.cream];
+      for (var i = 0; i < 48; i++) {
         out.push({
-          x: (i * 137.5) % CFG.VIEW_W,
-          y: -((i * 53) % 400) - 20,
-          vy: 60 + (i % 7) * 22,
-          sway: (i % 5) * 0.6,
-          rot: (i % 11) * 0.4,
-          w: 6 + (i % 4) * 3,
-          h: 10 + (i % 3) * 4,
-          color: ['#ffd166', '#5ec8f0', '#ff9eb5', '#8fe3a1', '#c78bff'][i % 5]
+          x: (i * 149.5) % CFG.VIEW_W,
+          y: -((i * 57) % 430) - 20,
+          vy: 55 + (i % 7) * 24,
+          sway: (i % 5) * .6,
+          rot: (i % 11) * .42,
+          w: 4 + (i % 4) * 3,
+          h: 9 + (i % 3) * 5,
+          star: i % 7 === 0,
+          color: colors[i % colors.length]
         });
       }
       return out;
     },
 
-    /* ============================================================
-     * 每帧
-     * ============================================================ */
     update: function (st, dt) {
       st.t += dt;
       st.appear = Math.min(1, st.appear + dt * 3.2);
 
-      // 彩带
       for (var i = 0; i < st.confetti.length; i++) {
         var c = st.confetti[i];
         c.y += c.vy * dt;
@@ -76,7 +75,6 @@
 
       var inp = BI.input, M = BI.mouse;
 
-      // 鼠标
       st.hover = -1;
       if (M.inside) {
         for (var b = 0; b < 2; b++) {
@@ -89,7 +87,6 @@
         return st.hover === 0 ? 'replay' : 'menu';
       }
 
-      // 键盘：入场动画没放完之前不吃输入，避免误触
       if (st.appear < 1) return null;
 
       if (inp.wasPressed('Enter') || inp.wasPressed('Space') ||
@@ -104,19 +101,25 @@
       return null;
     },
 
-    /* ============================================================
-     * 渲染
-     * ============================================================ */
     draw: function (ctx, st) {
       var s = st.summary;
       var W = CFG.VIEW_W, H = CFG.VIEW_H;
+      var versus = s.mode === 'versus';
+      var playerWin = s.winner === 'p1';
+      var anyWin = s.winner === 'p1' || s.winner === 'p2';
+      var draw = s.winner === 'draw';
+      var accent = draw ? U.C.pink : ((versus ? anyWin : playerWin) ? U.C.yellow : U.C.sky);
+      var stamp = draw ? 'DRAW' : (versus
+        ? (s.winner === 'p1' ? '1P WIN' : '2P WIN')
+        : (playerWin ? 'WIN' : 'LOSE'));
 
-      // 压暗背景
+      // 压暗 + 网点
       ctx.save();
-      ctx.globalAlpha = 0.72 * st.appear;
-      ctx.fillStyle = '#0d1220';
+      ctx.globalAlpha = .84 * st.appear;
+      ctx.fillStyle = U.C.ink;
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
+      U.dots(ctx, 0, 0, W, H, U.C.cream, .04 * st.appear, 15);
 
       // 彩带
       ctx.save();
@@ -125,77 +128,93 @@
         ctx.save();
         ctx.translate(cf.x, cf.y);
         ctx.rotate(cf.rot);
-        ctx.globalAlpha = 0.85 * st.appear;
-        ctx.fillStyle = cf.color;
-        ctx.fillRect(-cf.w / 2, -cf.h / 2, cf.w, cf.h);
+        ctx.globalAlpha = .9 * st.appear;
+        if (cf.star) {
+          U.star(ctx, 0, 0, cf.w * 1.7, cf.w * .7, cf.color, 5, cf.rot);
+        } else {
+          ctx.fillStyle = cf.color;
+          ctx.fillRect(-cf.w / 2, -cf.h / 2, cf.w, cf.h);
+        }
         ctx.restore();
       }
       ctx.restore();
 
-      // 卡片入场：从下方弹入 + 轻微过冲
       var e = st.appear;
       var over = e < 1 ? 1 - Math.pow(1 - e, 3) : 1;
-      var scale = 0.86 + over * 0.14 + (e < 1 ? Math.sin(e * Math.PI) * 0.03 : 0);
+      var scale = .88 + over * .12 + (e < 1 ? Math.sin(e * Math.PI) * .02 : 0);
       var c = cardRect();
 
       ctx.save();
       ctx.translate(W / 2, H / 2);
       ctx.scale(scale, scale);
-      ctx.translate(-W / 2, -(H / 2) + (1 - over) * 40);
+      ctx.translate(-W / 2, -(H / 2) + (1 - over) * 34);
 
-      // 卡片底
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.5)';
-      ctx.shadowBlur = 40;
-      ctx.shadowOffsetY = 12;
-      D.blob(ctx, c.x, c.y, c.w, c.h, 22, '#232b4a', 'rgba(255,255,255,.14)', 2);
-      ctx.restore();
-
-      // 顶部色条：赢了金色、输了灰蓝、平局紫色
-      var accent = (s.winner === 'p1' || s.winner === 'p2') ? '#ffd166'
-        : (s.winner === 'draw' ? '#c78bff' : '#7f8bb5');
-      ctx.save();
-      D.roundRect(ctx, c.x, c.y, c.w, 8, 22);
-      ctx.clip();
-      ctx.fillStyle = accent;
-      ctx.fillRect(c.x, c.y, c.w, 8);
-      ctx.restore();
-
-      // 主标题
-      D.text(ctx, s.title, W / 2, c.y + 62, {
-        font: 'bold 40px "Microsoft YaHei", sans-serif',
-        align: 'center', baseline: 'middle',
-        fill: accent, stroke: 'rgba(0,0,0,.45)', strokeWidth: 6
+      U.panel(ctx, c.x, c.y, c.w, c.h, {
+        fill: U.C.cream, stroke: U.C.ink, lw: 3, r: 5,
+        shadow: accent, shadowX: 8, shadowY: 8
       });
 
-      // 副标题
+      // 顶部墨色刊头
+      ctx.save();
+      D.roundRect(ctx, c.x, c.y, c.w, c.h, 5);
+      ctx.clip();
+      ctx.fillStyle = U.C.ink;
+      ctx.fillRect(c.x, c.y, c.w, 64);
+      U.dots(ctx, c.x, c.y, c.w, 64, U.C.cream, .055, 12);
+      ctx.restore();
+      U.text(ctx, 'MATCH REPORT  /  RESULT', c.x + 24, c.y + 22, {
+        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.cyan
+      });
+      U.text(ctx, 'BOMBIT  /  BATTLE LOG', c.x + c.w - 24, c.y + 22, {
+        size: 6.8, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.45)', align: 'right'
+      });
+      U.text(ctx, 'FINAL WHISTLE  /  ' + (s.title || '对局结束'), c.x + 24, c.y + 48, {
+        size: 8, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.55)'
+      });
+
+      // 主标题
+      U.text(ctx, s.title || '对局结束', c.x + 28, c.y + 112, {
+        size: 40, weight: 900, family: U.F.cn, fill: U.C.ink,
+        shadow: accent, shadowX: 4, shadowY: 4
+      });
       if (s.subtitle) {
-        D.text(ctx, s.subtitle, W / 2, c.y + 102, {
-          font: '15px "Microsoft YaHei", sans-serif',
-          align: 'center', baseline: 'middle',
-          fill: 'rgba(220,228,255,.8)'
+        U.text(ctx, s.subtitle, c.x + 30, c.y + 145, {
+          size: 9.5, weight: 500, family: U.F.cn, fill: 'rgba(20,16,25,.6)'
         });
       }
 
-      // 分隔线
-      ctx.save();
-      ctx.globalAlpha = .16;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(c.x + 34, c.y + 130, c.w - 68, 1);
+      // 右上角赛果贴纸
+      U.tag(ctx, stamp, c.x + c.w - 28, c.y + 102, {
+        size: 12, weight: 900, family: U.F.impact, fill: accent, fg: U.C.ink,
+        padX: 11, h: 26, align: 'right', stroke: U.C.ink, lw: 1.5, rot: .04,
+        shadow: U.C.ink, shadowX: 3, shadowY: 3
+      });
+      U.star(ctx, c.x + c.w - 52, c.y + 144, 7, 3, accent, 5, st.t * .2);
+
+      // 数据板
+      var sx = c.x + 28, sy = c.y + 184, sw = c.w - 56, sh = 148;
+      U.panel(ctx, sx, sy, sw, sh, {
+        fill: '#FAF1E2', stroke: U.C.ink, lw: 1.5, r: 3,
+        shadow: 'rgba(20,16,25,.16)', shadowX: 3, shadowY: 3
+      });
+      ctx.fillStyle = U.C.ink;
+      ctx.fillRect(sx, sy, sw, 25);
+      U.text(ctx, 'MATCH DATA  /  对局数据', sx + 12, sy + 13, {
+        size: 6.5, weight: 700, family: U.F.mono, fill: U.C.cream
+      });
+      U.text(ctx, 'SNAPSHOT  ' + pad2(st.summary.round || 1), sx + sw - 12, sy + 13, {
+        size: 6, weight: 700, family: U.F.mono, fill: U.C.cyan, align: 'right'
+      });
+      result.drawStats(ctx, st, sx + 16, sy + 44, sw - 32);
+
       ctx.restore();
 
-      // 数据区
-      result.drawStats(ctx, st, c.x + 34, c.y + 148, c.w - 68);
-
-      ctx.restore();
-
-      // 按钮不参与卡片缩放，单独画（这样点击区域和视觉一致）
+      // 按钮不参与卡片缩放，保证点击区域和视觉一致
       result.drawButtons(ctx, st);
 
-      D.text(ctx, 'Enter / R 再来一局　·　Esc / M 返回菜单', W / 2, H - 26, {
-        font: '13px "Microsoft YaHei", sans-serif',
-        align: 'center', baseline: 'middle',
-        fill: 'rgba(200,210,240,.55)'
+      U.tag(ctx, 'Enter / R 再来一局　·　Esc / M 返回菜单', W / 2, H - 25, {
+        size: 6.2, weight: 700, family: U.F.mono, fill: U.C.ink, fg: U.C.cream,
+        padX: 9, h: 18, align: 'center', stroke: U.C.cream, lw: 1
       });
     },
 
@@ -210,17 +229,15 @@
         right.push(['爆炸次数', String(s.explosions)]);
         right.push(['剩余生命', String(s.players[0] ? s.players[0].lives : 0)]);
         var p0 = s.players[0];
-        if (p0) {
-          right.push(['火力 / 炸弹', p0.power + '格 / ' + p0.maxBombs + '颗']);
-        }
+        if (p0) right.push(['火力 / 炸弹', p0.power + '格 / ' + p0.maxBombs + '颗']);
       } else if (s.mode === 'adventure') {
         left.push([s.winner === 'p1' ? '完成关卡' : '到达关卡', s.level + ' / ' + (s.totalLevels || CFG.ADVENTURE_LEVELS) + '关']);
         left.push(['击败敌人', String(s.kills || 0)]);
         left.push(['用时', s.elapsed.toFixed(1) + '秒']);
         right.push(['爆炸次数', String(s.explosions)]);
         right.push(['剩余生命', String(s.players[0] ? s.players[0].lives : 0)]);
-        var adventurer=s.players[0];
-        if(adventurer)right.push(['火力 / 炸弹', adventurer.power+'格 / '+adventurer.maxBombs+'颗']);
+        var adventurer = s.players[0];
+        if (adventurer) right.push(['火力 / 炸弹', adventurer.power + '格 / ' + adventurer.maxBombs + '颗']);
       } else {
         left.push(['最终比分', s.scores.p1 + ' : ' + s.scores.p2]);
         left.push(['回合数', String(s.round)]);
@@ -230,21 +247,32 @@
       }
 
       var colW = w / 2;
-      var lineH = 30;
-      result.drawCol(ctx, left, x, y, colW - 12, lineH);
-      result.drawCol(ctx, right, x + colW + 12, y, colW - 12, lineH);
+      result.drawCol(ctx, left, x, y, colW - 12, 28);
+      ctx.strokeStyle = 'rgba(20,16,25,.13)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + colW, y - 8);
+      ctx.lineTo(x + colW, y + 82);
+      ctx.stroke();
+      result.drawCol(ctx, right, x + colW + 12, y, colW - 12, 28);
     },
 
     drawCol: function (ctx, rows, x, y, w, lineH) {
       for (var i = 0; i < rows.length; i++) {
         var yy = y + i * lineH;
-        D.text(ctx, rows[i][0], x, yy, {
-          font: '14px "Microsoft YaHei", sans-serif',
-          baseline: 'middle', fill: 'rgba(190,200,230,.72)'
+        if (i > 0) {
+          ctx.strokeStyle = 'rgba(20,16,25,.09)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, yy - 12);
+          ctx.lineTo(x + w, yy - 12);
+          ctx.stroke();
+        }
+        U.text(ctx, rows[i][0], x, yy, {
+          size: 8.5, weight: 500, family: U.F.cn, fill: 'rgba(20,16,25,.55)'
         });
-        D.text(ctx, rows[i][1], x + w, yy, {
-          font: 'bold 15px "Microsoft YaHei", sans-serif',
-          align: 'right', baseline: 'middle', fill: '#eef2ff'
+        U.text(ctx, rows[i][1], x + w, yy, {
+          size: 11.5, weight: 900, family: U.F.mono, fill: U.C.ink, align: 'right'
         });
       }
     },
@@ -252,31 +280,39 @@
     drawButtons: function (ctx, st) {
       var labels = ['再来一局', '返回菜单'];
       var sub = ['Enter / R', 'Esc / M'];
-      var colors = ['#ffd166', 'rgba(255,255,255,.10)'];
-      var textColors = ['#3a2a10', '#eef2ff'];
-      var edges = ['rgba(0,0,0,.3)', 'rgba(255,255,255,.2)'];
+      var accent = [U.C.yellow, U.C.cream];
 
       for (var i = 0; i < 2; i++) {
         var r = btnRect(i);
         var hot = st.hover === i;
-        var k = hot ? 1.04 : 1;
+        var k = hot ? 1.018 : 1;
         ctx.save();
         ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
         ctx.scale(k, k);
-        D.blob(ctx, -r.w / 2, -r.h / 2, r.w, r.h, 14,
-          colors[i], hot ? '#ffffff' : edges[i], hot ? 3 : 2);
-        D.text(ctx, labels[i], 0, -6, {
-          font: 'bold 19px "Microsoft YaHei", sans-serif',
-          align: 'center', baseline: 'middle', fill: textColors[i]
+        U.panel(ctx, -r.w / 2, -r.h / 2, r.w, r.h, {
+          fill: hot ? U.C.ink : (i === 0 ? U.C.yellow : U.C.cream),
+          stroke: U.C.ink, lw: 2, r: 3,
+          shadow: hot ? U.C.orange : (i === 0 ? U.C.orange : 'rgba(20,16,25,.18)'),
+          shadowX: hot ? 4 : 2, shadowY: hot ? 4 : 2
         });
-        D.text(ctx, sub[i], 0, 14, {
-          font: '11px Consolas, monospace',
-          align: 'center', baseline: 'middle',
-          fill: i === 0 ? 'rgba(58,42,16,.65)' : 'rgba(200,210,240,.5)'
+        if (hot) {
+          ctx.fillStyle = i === 0 ? U.C.yellow : U.C.cyan;
+          ctx.fillRect(-r.w / 2, -r.h / 2, 5, r.h);
+        }
+        U.play(ctx, -r.w / 2 + 22, 0, 10, hot ? U.C.yellow : U.C.ink);
+        U.text(ctx, labels[i], -r.w / 2 + 40, -2, {
+          size: 15, weight: 900, family: U.F.cn, fill: hot ? U.C.cream : U.C.ink
         });
+        U.text(ctx, sub[i], -r.w / 2 + 40, 15, {
+          size: 5.8, weight: 700, family: U.F.mono, fill: hot ? 'rgba(245,235,216,.5)' : 'rgba(20,16,25,.4)'
+        });
+        U.keycap(ctx, i === 0 ? 'R' : 'ESC', r.w / 2 - 44, -11, 30, 20,
+          hot ? U.C.yellow : U.C.ink, hot ? U.C.ink : U.C.cream);
         ctx.restore();
       }
     }
   };
+
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
 
 })(window.BI = window.BI || {});

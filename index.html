@@ -8,8 +8,13 @@
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%; overflow: hidden;
-    background: radial-gradient(circle at 50% 30%, #4a5a8a 0%, #232a44 60%, #161a2c 100%);
-    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    background:
+      radial-gradient(circle at 79% 17%, #ff5533 0 10.5%, transparent 10.7%),
+      radial-gradient(circle at 14% 92%, rgba(92,225,242,.14), transparent 38%),
+      radial-gradient(rgba(245,235,216,.10) 1px, transparent 1.2px),
+      #0c0a10;
+    background-size: auto, auto, 18px 18px, auto;
+    font-family: "HarmonyOS Sans SC", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
   }
   #stage {
     position: fixed; inset: 0;
@@ -17,37 +22,92 @@
   }
   #game {
     display: block;
-    border-radius: 14px;
-    box-shadow: 0 18px 60px rgba(0,0,0,.55), 0 0 0 3px rgba(255,255,255,.09);
+    border-radius: 0;
+    outline: 2px solid #141019;
+    box-shadow: 8px 8px 0 #ff5533, 0 28px 90px rgba(0,0,0,.62);
     image-rendering: auto;
     touch-action: none;
   }
   #boot {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    z-index: 10; background: radial-gradient(ellipse at 50% 35%, #304b53, #101e2b 75%);
-    color: #eaf1e6; text-align: center;
+    z-index: 10; overflow: hidden;
+    background:
+      radial-gradient(circle at 82% 18%, #ff5533 0 12%, transparent 12.2%),
+      radial-gradient(rgba(20,16,25,.10) 1px, transparent 1.2px),
+      #f1e4cf;
+    background-size: auto, 16px 16px, auto;
+    color: #141019;
   }
-  .boot-card { width: min(360px, 78vw); }
-  .boot-mark { width: 58px; height: 58px; border-radius: 50%; margin: 0 auto 28px;
-    background: radial-gradient(circle at 32% 28%, #fff9, transparent 30%), linear-gradient(145deg, #b5ead8, #5ec8f0);
-    box-shadow: 0 0 48px #a6e3cf25, inset 0 0 0 2px #ffffff40; }
-  .boot-label { font: 11px Consolas, monospace; letter-spacing: 5px; color: #9ccabf; }
-  .boot-card h1 { font-size: 28px; margin: 14px 0 10px; letter-spacing: 4px; }
-  #boot-status { color: #9fb5bd; font-size: 13px; min-height: 20px; margin: 0 0 25px; }
-  #boot-progress { display: block; appearance: none; width: 100%; height: 7px; border: 0; border-radius: 9px; overflow: hidden; background: #ffffff12; color: #b4e4ce; }
-  #boot-progress::-webkit-progress-bar { background: #ffffff12; border-radius: 9px; }
-  #boot-progress::-webkit-progress-value { background: linear-gradient(90deg, #72bfc2, #b4e4ce); border-radius: 9px; }
-  #boot-progress::-moz-progress-bar { background: #b4e4ce; border-radius: 9px; }
-  .boot-count { display: flex; justify-content: space-between; color: #829da9; font-size: 11px; margin-top: 12px; }
-  #boot-retry { margin-top: 20px; padding: 9px 20px; color: #15352d; background: #b4e4ce; border: 0; border-radius: 8px; cursor: pointer; }
+  #boot::before, #boot::after {
+    content: ""; position: absolute; pointer-events: none;
+  }
+  #boot::before {
+    width: 34vw; height: 34vw; min-width: 280px; min-height: 280px;
+    border: 2px solid rgba(20,16,25,.18); border-radius: 50%;
+    right: 4vw; top: 6vh;
+  }
+  #boot::after {
+    left: 0; right: 0; bottom: 0; height: 6px;
+    background: linear-gradient(90deg,#ff5533 0 16.6%,#5ce1f2 16.6% 33.2%,#ffd23f 33.2% 49.8%,#ff5e9e 49.8% 66.4%,#62df88 66.4% 83%,#141019 83% 100%);
+  }
+  .boot-card {
+    position: relative; z-index: 1;
+    width: min(468px, 88vw);
+    padding: 26px 28px 24px;
+    background: #f5ebd8;
+    border: 2.5px solid #141019;
+    box-shadow: 8px 8px 0 #141019, 14px 14px 0 #ff5533;
+  }
+  .boot-top { display: flex; align-items: center; gap: 12px; }
+  .boot-mark {
+    flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%; position: relative;
+    background:
+      radial-gradient(circle at 36% 48%, #fff 0 8%, transparent 9%),
+      radial-gradient(circle at 64% 48%, #fff 0 8%, transparent 9%),
+      radial-gradient(circle at 33% 34%, #fff 0 5%, transparent 6%),
+      #141019;
+    box-shadow: 4px 4px 0 #5ce1f2;
+  }
+  .boot-mark::before {
+    content: ""; position: absolute; width: 12px; height: 12px; border-radius: 50%;
+    right: -8px; top: -10px; background: #ffd23f;
+    box-shadow: 0 0 0 5px rgba(255,211,63,.22);
+  }
+  .boot-mark::after {
+    content: ""; position: absolute; width: 20px; height: 5px; border-radius: 4px;
+    left: 29px; top: -4px; background: #ff5533; transform: rotate(-35deg); transform-origin: left center;
+  }
+  .boot-label { font: 7px/1.4 Consolas, "Courier New", monospace; letter-spacing: .16em; color: rgba(20,16,25,.62); flex: 1; }
+  .boot-version { font: 7px/1.4 Consolas, monospace; letter-spacing: .12em; color: rgba(20,16,25,.42); }
+  .boot-card h1 { margin: 20px 0 0; font-size: 32px; line-height: .96; letter-spacing: -.06em; color: #141019; }
+  .boot-card h1 em { display: block; margin-top: 4px; font-style: normal; font-family: Impact, "Arial Black", sans-serif; font-size: 27px; letter-spacing: .02em; color: #ff5533; -webkit-text-stroke: 1px #141019; }
+  #boot-status { color: rgba(20,16,25,.62); font: 7.5px/1.6 Consolas, "Courier New", monospace; letter-spacing: .06em; min-height: 20px; margin: 12px 0 14px; }
+  #boot-progress { display: block; appearance: none; width: 100%; height: 8px; border: 1.5px solid #141019; border-radius: 0; overflow: hidden; background: rgba(20,16,25,.12); color: #ff5533; }
+  #boot-progress::-webkit-progress-bar { background: rgba(20,16,25,.12); }
+  #boot-progress::-webkit-progress-value { background: #ff5533; }
+  #boot-progress::-moz-progress-bar { background: #ff5533; }
+  .boot-count { display: flex; justify-content: space-between; color: rgba(20,16,25,.52); font: 7px Consolas, monospace; letter-spacing: .08em; margin-top: 8px; }
+  #boot-retry { margin-top: 18px; padding: 10px 20px; color: #f5ebd8; background: #141019; border: 0; border-radius: 0; font: 700 11px "Microsoft YaHei", sans-serif; letter-spacing: .12em; cursor: pointer; box-shadow: 4px 4px 0 #ff5533; }
+  #boot-retry:hover { background: #ff5533; color: #141019; }
+  @media (max-width: 560px) {
+    .boot-card { padding: 20px 18px; box-shadow: 5px 5px 0 #141019, 9px 9px 0 #ff5533; }
+    .boot-card h1 { font-size: 27px; }
+    #boot::before { opacity: .45; }
+    #game { box-shadow: 4px 4px 0 #ff5533, 0 18px 48px rgba(0,0,0,.55); }
+  }
 </style>
 </head>
 <body>
   <div id="stage"><canvas id="game"></canvas></div>
   <div id="boot" role="status" aria-live="polite">
     <div class="boot-card">
-      <div class="boot-mark" aria-hidden="true"></div><div class="boot-label">BOMBIT · v2.2</div>
-      <h1>泡泡准备中</h1><p id="boot-status">正在加载游戏代码…</p>
+      <div class="boot-top">
+        <div class="boot-mark" aria-hidden="true"></div>
+        <div class="boot-label">BOMBIT / LOADING BAY</div>
+        <div class="boot-version">v2.2</div>
+      </div>
+      <h1>Q版泡泡堂<em>BOMBIT</em></h1>
+      <p id="boot-status">正在加载游戏代码…</p>
       <progress id="boot-progress" value="0" max="100" aria-label="游戏加载进度"></progress>
       <div class="boot-count"><span id="boot-detail">准备开始</span><span id="boot-percent">0%</span></div>
       <button id="boot-retry" hidden onclick="location.reload()">重新加载</button>
