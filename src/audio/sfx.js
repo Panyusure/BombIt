@@ -26,7 +26,8 @@
     ready: false,
     failed: false,          // 环境不支持音频（无头浏览器等）就不再重试
     enabled: true,
-    volume: 0.55,
+    baseVolume: 0.55,       // 100% 时的基准音量
+    volume: 0.55,           // 实际主增益（baseVolume × 设置百分比）
     _last: {},              // 每个音效的上次播放时间，用于限流
 
     /* ---------------- 初始化 ---------------- */
@@ -69,6 +70,18 @@
       // 静音是全局的：背景音乐跟着一起静/响（music.js 可能没加载）
       if (BI.music && BI.music.syncMute) BI.music.syncMute();
       return sfx.enabled;
+    },
+
+    /** 设置音效音量，pct 为 0..1 的「百分比」；100% 对应 baseVolume */
+    setVolume: function (pct) {
+      pct = Math.max(0, Math.min(1, Number(pct) || 0));
+      sfx.volume = sfx.baseVolume * pct;
+      if (sfx.master) sfx.master.gain.value = sfx.enabled ? sfx.volume : 0;
+      return pct;
+    },
+
+    getVolume: function () {
+      return sfx.baseVolume ? sfx.volume / sfx.baseVolume : 0;
     },
 
     status: function () {

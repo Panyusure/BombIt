@@ -47,12 +47,14 @@
 
   /* 固定骨架 */
   var BTN = { w: 360, h: 56, y: 566 };
-  var REPLAY_BTN = { x: 558, y: 22, w: 142, h: 38 };
+  var REPLAY_BTN = { x: 544, y: 22, w: 118, h: 38 };
+  var SETTINGS_BTN = { x: 670, y: 24, w: 32, h: 34 };
   var BACK_BTN = { x: 20, y: 566, w: 136, h: 56 };
   var MODE_CARD = { x: 20, y: 226, w: 218, h: 314, gap: 13 };
-  var GRID = { x: 20, y: 152, w: 90, h: 94, gapX: 6, gapY: 10, cols: 3 };
-  var INFO = { x: 20, y: 362, w: 292, h: 180 };
-  var POSTER = { x: 326, y: 112, w: 374, h: 430 };
+  var GRID = { x: 20, y: 450, w: 106, h: 80, gapX: 8, gapY: 0, cols: 6 };
+  var POSTER = { x: 20, y: 128, w: 680, h: 310 };
+  var SETTINGS_CARD = { x: 150, y: 170, w: 420, h: 360 };
+  var SETTINGS_SLIDER = { x: 178, y: 306, w: 364, h: 8, gap: 72 };
 
   function pad2(n) { return n < 10 ? '0' + n : String(n); }
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
@@ -75,10 +77,9 @@
   function charRects() {
     var out = [];
     for (var i = 0; i < 6; i++) {
-      var row = Math.floor(i / GRID.cols), col = i % GRID.cols;
       out.push({
-        x: GRID.x + col * (GRID.w + GRID.gapX),
-        y: GRID.y + row * (GRID.h + GRID.gapY),
+        x: GRID.x + i * (GRID.w + GRID.gapX),
+        y: GRID.y,
         w: GRID.w, h: GRID.h
       });
     }
@@ -98,11 +99,11 @@
 
   function tabRects(st) {
     if (MODES[st.modeIndex].players === 1) {
-      return [{ x: 20, y: 112, w: 154, h: 28, player: 0 }];
+      return [{ x: 20, y: 96, w: 154, h: 24, player: 0 }];
     }
     return [
-      { x: 20, y: 112, w: 140, h: 28, player: 0 },
-      { x: 166, y: 112, w: 140, h: 28, player: 1 }
+      { x: 20, y: 96, w: 140, h: 24, player: 0 },
+      { x: 166, y: 96, w: 140, h: 24, player: 1 }
     ];
   }
 
@@ -185,6 +186,8 @@
 
     MODES: MODES,
     REPLAY_BUTTON: REPLAY_BTN,
+    SETTINGS_BUTTON: SETTINGS_BTN,
+    SETTINGS_CARD: SETTINGS_CARD,
     BACK_BUTTON: BACK_BTN,
     BUTTON: BTN,
     GRID: GRID,
@@ -206,9 +209,16 @@
         tabs: [],
         hover: null,
         stepT: 1,
-        switchT: 1
+        switchT: 1,
+        settings: {
+          open: false,
+          drag: null,
+          sfx: 1,
+          music: 1
+        }
       };
       menu.layout(st);
+      menu.loadAudioSettings(st);
       return st;
     },
 
@@ -233,7 +243,7 @@
       st.tabs = st.step === 'mode' ? [] : tabRects(st);
       st.rows = st.step === 'mode'
         ? [{ type: 'mode', y: MODE_CARD.y, h: MODE_CARD.h, label: '模式' }]
-        : [{ type: 'char', player: st.player, y: GRID.y, h: GRID.h * 2 + GRID.gapY, label: st.player ? '2P 精灵' : '1P 精灵' }];
+        : [{ type: 'char', player: st.player, y: GRID.y, h: GRID.h, label: st.player ? '2P 精灵' : '1P 精灵' }];
       st.focus = clamp(st.focus || 0, 0, st.cards.length - 1);
       if (st.step === 'chars') st.player = clamp(st.player || 0, 0, st.playerCount - 1);
     },
@@ -245,6 +255,8 @@
       st.stepT = 0;
       st.switchT = 0;
       st.hover = null;
+      st.settings.open = false;
+      st.settings.drag = null;
       menu.layout(st);
     },
 
@@ -256,6 +268,8 @@
       st.stepT = 0;
       st.switchT = 0;
       st.hover = null;
+      st.settings.open = false;
+      st.settings.drag = null;
       menu.ensureDistinct(st);
       menu.layout(st);
     },
@@ -344,6 +358,61 @@
     },
 
     /* ============================================================
+     * 设置 / 音量
+     * ============================================================ */
+    sliderRects: function (st) {
+      var s = st.settings || {};
+      return {
+        sfx: { x: SETTINGS_SLIDER.x, y: SETTINGS_SLIDER.y, w: SETTINGS_SLIDER.w, h: SETTINGS_SLIDER.h, value: s.sfx == null ? 1 : s.sfx },
+        music: { x: SETTINGS_SLIDER.x, y: SETTINGS_SLIDER.y + SETTINGS_SLIDER.gap, w: SETTINGS_SLIDER.w, h: SETTINGS_SLIDER.h, value: s.music == null ? 1 : s.music }
+      };
+    },
+
+    loadAudioSettings: function (st) {
+      function read(key) {
+        try {
+          var v = parseFloat(localStorage.getItem(key));
+          return isFinite(v) ? clamp(v / 100, 0, 1) : null;
+        } catch (e) { return null; }
+      }
+      var sfx = read('bombit.sfx.volume');
+      var music = read('bombit.music.volume');
+      st.settings.sfx = sfx == null
+        ? (BI.sfx && BI.sfx.getVolume ? BI.sfx.getVolume() : 1)
+        : sfx;
+      st.settings.music = music == null
+        ? (BI.music && BI.music.getVolume ? BI.music.getVolume() : 1)
+        : music;
+      if (sfx != null && BI.sfx && BI.sfx.setVolume) BI.sfx.setVolume(sfx);
+      if (music != null && BI.music && BI.music.setVolume) BI.music.setVolume(music);
+    },
+
+    applyAudioSetting: function (st, kind, value, persist) {
+      value = clamp(Number(value) || 0, 0, 1);
+      st.settings[kind] = value;
+      if (kind === 'sfx' && BI.sfx && BI.sfx.setVolume) BI.sfx.setVolume(value);
+      if (kind === 'music' && BI.music && BI.music.setVolume) BI.music.setVolume(value);
+      if (persist) {
+        try { localStorage.setItem('bombit.' + kind + '.volume', String(Math.round(value * 100))); } catch (e) {}
+      }
+    },
+
+    openSettings: function (st) {
+      st.settings.open = true;
+      st.settings.drag = null;
+      st.settings.sfx = BI.sfx && BI.sfx.getVolume ? BI.sfx.getVolume() : 1;
+      st.settings.music = BI.music && BI.music.getVolume ? BI.music.getVolume() : 1;
+      if (BI.sfx && BI.sfx.unlock) BI.sfx.unlock();
+      st.hover = null;
+    },
+
+    closeSettings: function (st) {
+      st.settings.open = false;
+      st.settings.drag = null;
+      st.hover = null;
+    },
+
+    /* ============================================================
      * 更新
      * ============================================================ */
     update: function (st, dt) {
@@ -353,12 +422,15 @@
       st.switchT = Math.min(1, st.switchT + dt * 4);
 
       var inp = BI.input, M = BI.mouse;
+      if (st.settings.open) return menu.updateSettings(st, dt, inp, M);
       var mode = MODES[st.modeIndex];
       st.hover = null;
 
       /* ---- hover ---- */
       if (M.inside) {
-        if (inp.hitRect(REPLAY_BTN.x, REPLAY_BTN.y, REPLAY_BTN.w, REPLAY_BTN.h)) {
+        if (inp.hitRect(SETTINGS_BTN.x, SETTINGS_BTN.y, SETTINGS_BTN.w, SETTINGS_BTN.h)) {
+          st.hover = { kind: 'settings' };
+        } else if (inp.hitRect(REPLAY_BTN.x, REPLAY_BTN.y, REPLAY_BTN.w, REPLAY_BTN.h)) {
           st.hover = { kind: 'replay' };
         } else if (st.step === 'chars' && inp.hitRect(BACK_BTN.x, BACK_BTN.y, BACK_BTN.w, BACK_BTN.h)) {
           st.hover = { kind: 'back' };
@@ -385,6 +457,11 @@
 
       /* ---- click ---- */
       if (M.clicked) {
+        if (st.hover && st.hover.kind === 'settings') {
+          BI.sfx.play('menuConfirm');
+          menu.openSettings(st);
+          return null;
+        }
         if (st.hover && st.hover.kind === 'replay') {
           BI.sfx.play('menuConfirm');
           return { screen: 'replay' };
@@ -475,6 +552,52 @@
       return null;
     },
 
+    /** 设置弹层打开时，菜单其余部分完全冻结 */
+    updateSettings: function (st, dt, inp, M) {
+      var s = st.settings;
+      var sliders = menu.sliderRects(st);
+      var card = SETTINGS_CARD;
+      var close = { x: card.x + card.w - 42, y: card.y + 16, w: 26, h: 26 };
+      var done = { x: card.x + card.w - 120, y: card.y + card.h - 48, w: 96, h: 30 };
+      function setFromMouse(kind) {
+        var r = sliders[kind];
+        var v = clamp((M.x - r.x) / r.w, 0, 1);
+        menu.applyAudioSetting(st, kind, v, true);
+      }
+      function hitSlider(r) {
+        return M.inside && M.x >= r.x - 10 && M.x <= r.x + r.w + 10 &&
+               M.y >= r.y - 18 && M.y <= r.y + r.h + 18;
+      }
+
+      if (inp.wasPressed('Escape') || inp.wasPressed('Backspace')) {
+        menu.closeSettings(st);
+        return null;
+      }
+      if (inp.wasPressed('KeyM')) {
+        BI.sfx.toggle();
+        return null;
+      }
+      if (M.clicked) {
+        if (inp.hitRect(close.x, close.y, close.w, close.h) ||
+            inp.hitRect(done.x, done.y, done.w, done.h)) {
+          menu.closeSettings(st);
+          return null;
+        }
+        if (M.x < card.x || M.x > card.x + card.w || M.y < card.y || M.y > card.y + card.h) {
+          menu.closeSettings(st);
+          return null;
+        }
+        if (hitSlider(sliders.sfx)) { s.drag = 'sfx'; setFromMouse('sfx'); return null; }
+        if (hitSlider(sliders.music)) { s.drag = 'music'; setFromMouse('music'); return null; }
+      }
+      if (M.down && s.drag) {
+        setFromMouse(s.drag);
+      } else if (!M.down) {
+        s.drag = null;
+      }
+      return null;
+    },
+
     /* ============================================================
      * 渲染入口
      * ============================================================ */
@@ -488,14 +611,15 @@
         menu.drawBackground(ctx, st);
         menu.drawCharHeader(ctx, st);
         menu.drawPlayerTabs(ctx, st);
-        menu.drawCharTiles(ctx, st);
-        menu.drawInfoPanel(ctx, st);
         menu.drawPoster(ctx, st);
+        menu.drawCharTiles(ctx, st);
         menu.drawBack(ctx, st);
       }
       menu.drawReplay(ctx, st);
+      menu.drawSettingsButton(ctx, st);
       menu.drawCta(ctx, st);
       menu.drawFooter(ctx, st);
+      if (st.settings.open) menu.drawSettings(ctx, st);
     },
 
     /* ============================================================
@@ -797,14 +921,14 @@
       U.text(ctx, 'MOTION UI  /  2026', W - 13, 9, {
         size: 6.5, family: U.F.mono, weight: 700, fill: U.C.cream, alpha: .55, align: 'right'
       });
-      U.text(ctx, 'STEP 02 / SPIRIT SELECT', 24, 37, {
+      U.text(ctx, 'STEP 02 / SPIRIT SELECT', 24, 33, {
         size: 7, weight: 700, family: U.F.mono, fill: U.C.cyan
       });
-      U.text(ctx, '选择精灵', 22, 72, {
+      U.text(ctx, '选择精灵', 22, 66, {
         size: 30, weight: 900, family: U.F.cn, fill: U.C.ink,
         shadow: U.C.orange, shadowX: 3, shadowY: 3
       });
-      U.text(ctx, 'CHOOSE YOUR SPIRIT  /  6 AVAILABLE', 25, 92, {
+      U.text(ctx, 'CHOOSE YOUR SPIRIT  /  6 AVAILABLE', 25, 85, {
         size: 6.8, weight: 700, family: U.F.mono, fill: U.C.ink, alpha: .48
       });
 
@@ -813,7 +937,7 @@
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(404, 32);
-      ctx.lineTo(404, 94);
+      ctx.lineTo(404, 90);
       ctx.stroke();
       ctx.restore();
       U.tag(ctx, mode.label, 420, 44, {
@@ -831,8 +955,8 @@
       ctx.strokeStyle = 'rgba(20,16,25,.22)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(20, 104);
-      ctx.lineTo(700, 104);
+      ctx.moveTo(20, 92);
+      ctx.lineTo(700, 92);
       ctx.stroke();
       ctx.restore();
     },
@@ -955,77 +1079,6 @@
     /* ============================================================
      * 角色档案 / 技能
      * ============================================================ */
-    drawInfoPanel: function (ctx, st) {
-      var ch = st.chars[st.charIndex[st.player]];
-      if (!ch) return;
-      var v = charVisual(ch), data = BI.SKILLS[ch.id] || BI.SKILLS.xiaonuo;
-      var lore = BI.CHARACTER_LORE[ch.id];
-      var x = INFO.x, y = INFO.y, w = INFO.w, h = INFO.h;
-      var pcolor = playerColor(st.player);
-      var key = data.passive ? '被动' : (st.player ? 'F' : (st.versus ? '右Shift' : 'Q'));
-
-      U.panel(ctx, x, y, w, h, {
-        fill: U.C.cream, stroke: U.C.ink, lw: 2, r: 4,
-        shadow: pcolor, shadowX: 5, shadowY: 5
-      });
-      U.dots(ctx, x, y, w, h, U.C.ink, .055, 11);
-      ctx.fillStyle = v.color;
-      ctx.fillRect(x, y, w, 5);
-
-      U.tag(ctx, 'SKILL FILE / 技能档案', x + 10, y + 18, {
-        size: 5.8, family: U.F.mono, fill: U.C.ink, fg: U.C.cream,
-        padX: 5, h: 13, align: 'left', stroke: null
-      });
-      U.text(ctx, ch.name || '', x + 11, y + 43, {
-        size: 17, weight: 900, family: U.F.cn, fill: U.C.ink
-      });
-      U.tag(ctx, (v.role || '精灵') + '系', x + w - 10, y + 34, {
-        size: 6, family: U.F.cn, fill: v.accent, fg: U.C.ink,
-        padX: 5, h: 13, align: 'right', stroke: U.C.ink, lw: 1
-      });
-
-      var skillLabel = (data.passive ? '被动 · ' : '') + data.name;
-      U.text(ctx, skillLabel, x + 11, y + 64, {
-        size: 12.5, weight: 900, family: U.F.cn, fill: U.C.ink
-      });
-      ctx.fillStyle = v.color;
-      ctx.fillRect(x + 11, y + 69, Math.min(U.measure(ctx, skillLabel, 12.5, 900, U.F.cn), w - 92), 3);
-      U.panel(ctx, x + w - 67, y + 47, 56, 21, {
-        fill: v.accent, stroke: U.C.ink, lw: 1.3, r: 2,
-        shadow: U.C.ink, shadowX: 2, shadowY: 2
-      });
-      U.text(ctx, key, x + w - 39, y + 58, {
-        size: 7.5, weight: 900, family: U.F.cn, fill: U.C.ink, align: 'center'
-      });
-
-      wrapText(ctx, data.desc, x + 11, y + 83, w - 22, 8, 10,
-        'rgba(20,16,25,.72)', 2, 500, U.F.cn);
-
-      if (data.passive) {
-        U.text(ctx, '放弹' + data.bombsToEvolve + '次或' + (st.versus ? '击倒' : '击杀') + '通灵',
-          x + 11, y + 111, {
-            size: 7.4, weight: 700, family: U.F.cn, fill: hexA(U.C.ink, .62)
-          });
-      }
-      U.text(ctx, data.passive ? '6 格通灵' : '冷却' + data.cd + '秒', x + w - 11, y + 111, {
-        size: 6.8, weight: 700, family: U.F.mono, fill: hexA(U.C.ink, .48), align: 'right'
-      });
-
-      if (lore) {
-        U.text(ctx, 'LORE', x + 11, y + 132, {
-          size: 5.5, weight: 700, family: U.F.mono, fill: v.color, alpha: .9
-        });
-        U.text(ctx, lore.summary, x + 42, y + 132, {
-          size: 7.2, weight: 500, family: U.F.cn, fill: 'rgba(20,16,25,.56)'
-        });
-      }
-
-      U.text(ctx, (st.player ? '2P' : '1P') + '  /  ' + (st.versus ? '选好后确认' : '选好后开始'), x + 11, y + h - 18, {
-        size: 6, weight: 700, family: U.F.mono, fill: hexA(U.C.ink, .4)
-      });
-      U.star(ctx, x + w - 20, y + h - 18, 5, 2, v.accent, 5, st.t * .2);
-    },
-
     /* ============================================================
      * 大幅动效海报
      * ============================================================ */
@@ -1033,16 +1086,18 @@
       var ch = st.chars[st.charIndex[st.player]];
       if (!ch) return;
       var v = charVisual(ch), data = BI.SKILLS[ch.id] || BI.SKILLS.xiaonuo;
+      var lore = BI.CHARACTER_LORE[ch.id];
       var idx = st.charIndex[st.player];
       var x = POSTER.x, y = POSTER.y, w = POSTER.w, h = POSTER.h;
       var pc = playerColor(st.player);
       var asset = ch.id ? BI.assets.get(ch.id) : null;
       var enter = easeOut(Math.min(1, st.stepT * 3));
       var swap = easeOut(Math.min(1, st.switchT * 4.5));
-      var cx = x + w / 2;
+      var diskX = x + 520, diskY = y + 170;
+      var bottom = y + 282 + Math.sin(st.t * 2.2) * 3;
 
       ctx.save();
-      ctx.translate((1 - enter) * 28, (1 - enter) * 16);
+      ctx.translate((1 - enter) * -22, (1 - enter) * 12);
       U.panel(ctx, x, y, w, h, {
         fill: U.C.ink, stroke: U.C.ink, lw: 3, r: 5,
         shadow: v.color, shadowX: 9, shadowY: 9
@@ -1051,21 +1106,19 @@
       D.roundRect(ctx, x, y, w, h, 5);
       ctx.clip();
 
-      // 角色色放射 + 厚色环 + 奶油聚光圆。
-      // 角色本身也有大面积主题色，所以内圈必须用奶油色，不能再用同色圆盘。
-      var diskY = y + 214;
+      // 右侧角色聚光：旋转放射 + 厚色环 + 奶油圆
       ctx.save();
-      ctx.translate(cx, diskY);
-      ctx.rotate(st.t * .06);
+      ctx.translate(diskX, diskY);
+      ctx.rotate(st.t * .055);
       ctx.fillStyle = v.color;
-      for (var ray = 0; ray < 18; ray++) {
-        var ra = ray * Math.PI * 2 / 18;
+      for (var ray = 0; ray < 22; ray++) {
+        var ra = ray * Math.PI * 2 / 22;
         ctx.save();
         ctx.rotate(ra);
         ctx.beginPath();
-        ctx.moveTo(0, 148);
-        ctx.lineTo(-8, 198);
-        ctx.lineTo(8, 198);
+        ctx.moveTo(0, 124);
+        ctx.lineTo(-9, 184);
+        ctx.lineTo(9, 184);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
@@ -1073,60 +1126,55 @@
       ctx.restore();
       ctx.fillStyle = U.C.cream;
       ctx.beginPath();
-      ctx.arc(cx, diskY, 134, 0, Math.PI * 2);
+      ctx.arc(diskX, diskY, 118, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = v.color;
-      ctx.lineWidth = 14;
+      ctx.lineWidth = 13;
       ctx.beginPath();
-      ctx.arc(cx, diskY, 146, 0, Math.PI * 2);
+      ctx.arc(diskX, diskY, 128, 0, Math.PI * 2);
       ctx.stroke();
       ctx.strokeStyle = U.C.ink;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(cx, diskY, 153, 0, Math.PI * 2);
+      ctx.arc(diskX, diskY, 136, 0, Math.PI * 2);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(cx, diskY, 134, 0, Math.PI * 2);
+      ctx.arc(diskX, diskY, 118, 0, Math.PI * 2);
       ctx.stroke();
-      U.dots(ctx, x, y, w, h, U.C.cream, .055, 12);
+      U.dots(ctx, x, y, w, h, U.C.cream, .045, 12);
 
-      // 背景幽灵编号
-      U.text(ctx, pad2(idx + 1), x + w - 18, y + 86, {
-        size: 104, weight: 900, family: U.F.impact, fill: 'rgba(245,235,216,0)',
-        stroke: 'rgba(245,235,216,.12)', strokeWidth: 1.5, align: 'right'
-      });
-
-      // 速度线 / 边角贴纸
+      // 速度线与背景巨型编号
       ctx.save();
-      ctx.strokeStyle = 'rgba(245,235,216,.18)';
+      ctx.strokeStyle = 'rgba(245,235,216,.16)';
       ctx.lineWidth = 2;
-      for (var l = 0; l < 6; l++) {
+      for (var l = 0; l < 7; l++) {
         ctx.beginPath();
-        ctx.moveTo(x + 12, y + 150 + l * 26);
-        ctx.lineTo(x + 62 + l * 8, y + 132 + l * 26);
+        ctx.moveTo(x + 10, y + 70 + l * 21);
+        ctx.lineTo(x + 54 + l * 9, y + 52 + l * 21);
         ctx.stroke();
       }
       ctx.restore();
+      U.text(ctx, pad2(idx + 1), x + w - 22, y + 102, {
+        size: 112, weight: 900, family: U.F.impact, fill: 'rgba(245,235,216,0)',
+        stroke: 'rgba(245,235,216,.12)', strokeWidth: 1.5, align: 'right'
+      });
 
-      // 角色 + 地面影
-      var bottom = y + 334 + Math.sin(st.t * 2.2) * 4;
+      // 角色全身像
       ctx.save();
-      ctx.globalAlpha = .3;
+      ctx.globalAlpha = .32;
       ctx.fillStyle = U.C.ink;
       ctx.beginPath();
-      ctx.ellipse(cx, bottom + 5, 74, 12, 0, 0, Math.PI * 2);
+      ctx.ellipse(diskX, bottom + 4, 76, 11, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-
       var scale = .9 + .1 * swap;
       ctx.save();
-      ctx.translate(cx, bottom);
-      ctx.rotate((1 - swap) * -.07 + Math.sin(st.t * 1.4) * .012);
+      ctx.translate(diskX, bottom);
+      ctx.rotate((1 - swap) * -.06 + Math.sin(st.t * 1.4) * .01);
       ctx.scale(scale, scale);
-      drawFullSprite(ctx, asset, 0, 0, 306, 302, v.color);
+      drawFullSprite(ctx, asset, 0, 0, 260, 266, v.color);
       ctx.restore();
 
-      // 换人时的奶油闪光
       if (st.switchT < .3) {
         ctx.save();
         ctx.globalAlpha = (1 - st.switchT / .3) * .22;
@@ -1135,49 +1183,87 @@
         ctx.restore();
       }
 
-      // 海报刊头
-      U.tag(ctx, 'SPIRIT ' + pad2(idx + 1), x + 14, y + 20, {
+      // 海报刊头与玩家标签
+      U.tag(ctx, 'SPIRIT ' + pad2(idx + 1), x + 18, y + 20, {
         size: 6.5, family: U.F.mono, fill: v.color, fg: U.C.ink,
         padX: 7, h: 16, align: 'left', stroke: U.C.ink, lw: 1
       });
-      U.tag(ctx, st.player ? '2P' : '1P', x + w - 14, y + 20, {
+      U.tag(ctx, st.player ? '2P' : '1P', x + w - 18, y + 20, {
         size: 7, family: U.F.mono, fill: pc, fg: U.C.ink,
         padX: 7, h: 16, align: 'right', stroke: U.C.ink, lw: 1
       });
-      U.text(ctx, 'BOMBIT / CHARACTER POSTER', x + 15, y + h - 112, {
-        size: 5.5, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.45)'
+
+      // 左侧：说明全部放进海报
+      U.tag(ctx, (v.role || '精灵') + '系', x + 20, y + 45, {
+        size: 6, family: U.F.cn, fill: v.accent, fg: U.C.ink,
+        padX: 6, h: 14, align: 'left', stroke: U.C.ink, lw: 1
+      });
+      U.text(ctx, ch.name || '？', x + 20, y + 90, {
+        size: 44, weight: 900, family: U.F.cn, fill: U.C.cream,
+        shadow: v.color, shadowX: 3, shadowY: 3
+      });
+      var skillLabel = (data.passive ? '被动 · ' : '') + data.name;
+      U.text(ctx, skillLabel, x + 22, y + 118, {
+        size: 14, weight: 900, family: U.F.cn, fill: v.color
+      });
+      ctx.fillStyle = v.color;
+      ctx.fillRect(x + 22, y + 124, Math.min(U.measure(ctx, skillLabel, 14, 900, U.F.cn), 300), 3);
+
+      wrapText(ctx, data.desc, x + 22, y + 143, 340, 8.6, 11,
+        'rgba(245,235,216,.72)', 2, 500, U.F.cn);
+      if (data.passive) {
+        U.text(ctx, '放弹' + data.bombsToEvolve + '次或' + (st.versus ? '击倒' : '击杀') + '通灵',
+          x + 22, y + 172, {
+            size: 7.2, weight: 700, family: U.F.cn, fill: 'rgba(245,235,216,.55)'
+          });
+      }
+      if (lore) {
+        U.text(ctx, 'LORE', x + 22, y + 194, {
+          size: 5.5, weight: 700, family: U.F.mono, fill: v.accent
+        });
+        U.text(ctx, lore.summary, x + 54, y + 194, {
+          size: 6.8, weight: 500, family: U.F.cn, fill: 'rgba(245,235,216,.5)'
+        });
+      }
+
+      // 键位 / 冷却 / 玩家副标
+      var keyText = data.passive ? '被动' : (st.player ? 'F' : (st.versus ? '右Shift' : 'Q'));
+      U.keycap(ctx, keyText, x + 22, y + 214, data.passive ? 44 : 34, 20, v.color, U.C.ink);
+      U.text(ctx, data.passive ? '6 格通灵' : '冷却' + data.cd + '秒', x + 66, y + 224, {
+        size: 6.6, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.55)'
+      });
+      U.text(ctx, 'BOMBIT / CHARACTER FILE', x + 22, y + 254, {
+        size: 5.3, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.35)'
       });
 
-      // 浮动星 / 爱心
+      // 浮动星点
       var deco = [
-        [x + 50, y + 104, 6, U.C.yellow, .2],
-        [x + w - 54, y + 148, 4, U.C.cream, 1.1],
-        [x + 40, y + 270, 4, v.accent, .7],
-        [x + w - 44, y + 284, 5, U.C.yellow, 1.6]
+        [x + 340, y + 46, 6, U.C.yellow, .2],
+        [x + 386, y + 128, 4, U.C.cream, 1.1],
+        [x + 36, y + 240, 4, v.accent, .7],
+        [diskX + 74, y + 272, 5, U.C.yellow, 1.6]
       ];
       for (var di = 0; di < deco.length; di++) {
         var dd = deco[di];
         U.star(ctx, dd[0], dd[1] + Math.sin(st.t * 2 + dd[4] * 5) * 4, dd[2], dd[2] * .45, dd[3], 5, st.t * .35);
       }
 
-      // 底部名字板
-      U.panel(ctx, x + 14, y + h - 96, w - 28, 82, {
-        fill: U.C.cream, stroke: U.C.ink, lw: 2, r: 3,
-        shadow: pc, shadowX: 4, shadowY: 4
-      });
-      U.text(ctx, ch.name || '？', x + 28, y + h - 57, {
-        size: 27, weight: 900, family: U.F.cn, fill: U.C.ink
-      });
-      U.text(ctx, (v.role || '精灵') + '系  /  ' + (st.player ? 'PLAYER 2' : 'PLAYER 1'), x + 30, y + h - 36, {
-        size: 6, weight: 700, family: U.F.mono, fill: 'rgba(20,16,25,.48)'
-      });
-      U.tag(ctx, data.name, x + w - 28, y + h - 59, {
-        size: 8, weight: 900, family: U.F.cn, fill: v.color, fg: U.C.ink,
-        padX: 6, h: 16, align: 'right', stroke: U.C.ink, lw: 1
-      });
-      U.text(ctx, data.passive ? 'PASSIVE' : ('CD ' + data.cd + 's'), x + w - 28, y + h - 40, {
-        size: 5.8, weight: 700, family: U.F.mono, fill: 'rgba(20,16,25,.42)', align: 'right'
-      });
+      // 底部滚动条：动效短片的“海报跑马灯”
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y + h - 24, w, 24);
+      ctx.clip();
+      ctx.fillStyle = v.color;
+      ctx.fillRect(x, y + h - 24, w, 24);
+      var shift = -((st.t * 32) % 190);
+      ctx.fillStyle = U.C.ink;
+      for (var m = 0; m < 9; m++) {
+        U.text(ctx, 'BOMBIT  /  SPIRIT SELECT  /  ' + (st.player ? '2P' : '1P') + '  /  ' + pad2(idx + 1),
+          x + shift + m * 190, y + h - 12, {
+            size: 6.2, weight: 700, family: U.F.mono, fill: U.C.ink
+          });
+      }
+      ctx.restore();
 
       ctx.restore();
       ctx.restore();
@@ -1249,15 +1335,151 @@
         stroke: U.C.ink, lw: 2, r: 3,
         shadow: hover ? U.C.orange : U.C.ink, shadowX: 3, shadowY: 3
       });
-      U.text(ctx, '↗', r.x + 13, r.y + r.h / 2, {
-        size: 13, weight: 900, family: U.F.mono, fill: hover ? U.C.yellow : U.C.orange
+      U.text(ctx, '↗', r.x + 11, r.y + r.h / 2, {
+        size: 12, weight: 900, family: U.F.mono, fill: hover ? U.C.yellow : U.C.orange
       });
-      U.text(ctx, '对局回放', r.x + 30, r.y + r.h / 2 - 1, {
-        size: 9.5, weight: 700, family: U.F.cn, fill: hover ? U.C.cream : U.C.ink
+      U.text(ctx, '对局回放', r.x + 27, r.y + r.h / 2 - 1, {
+        size: 9, weight: 700, family: U.F.cn, fill: hover ? U.C.cream : U.C.ink
       });
-      U.text(ctx, 'REPLAY', r.x + r.w - 12, r.y + r.h / 2 + 1, {
-        size: 5.5, weight: 700, family: U.F.mono, fill: hover ? U.C.cyan : U.C.ink, alpha: .65, align: 'right'
+      U.text(ctx, 'REPLAY', r.x + r.w - 9, r.y + r.h / 2 + 1, {
+        size: 5, weight: 700, family: U.F.mono, fill: hover ? U.C.cyan : U.C.ink, alpha: .65, align: 'right'
       });
+    },
+
+    drawSettingsButton: function (ctx, st) {
+      var r = SETTINGS_BTN;
+      var hover = !st.settings.open && st.hover && st.hover.kind === 'settings';
+      U.panel(ctx, r.x, r.y, r.w, r.h, {
+        fill: hover ? U.C.ink : U.C.cream,
+        stroke: U.C.ink, lw: 1.8, r: 3,
+        shadow: hover ? U.C.orange : U.C.ink, shadowX: 2, shadowY: 2
+      });
+      var cx = r.x + r.w / 2, cy = r.y + r.h / 2, gear = hover ? U.C.yellow : U.C.ink;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = gear;
+      ctx.strokeStyle = gear;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      var teeth = 8, outer = 10, inner = 7.4;
+      for (var i = 0; i < teeth * 2; i++) {
+        var a = -Math.PI / 2 + i * Math.PI / teeth;
+        var rr = i % 2 === 0 ? outer : inner;
+        if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, 3.1, 0, Math.PI * 2);
+      ctx.fillStyle = hover ? U.C.ink : U.C.cream;
+      ctx.fill();
+      ctx.restore();
+    },
+
+    drawSettings: function (ctx, st) {
+      var W = CFG.VIEW_W, H = CFG.VIEW_H;
+      var c = SETTINGS_CARD, s = st.settings;
+      ctx.save();
+      ctx.globalAlpha = .82;
+      ctx.fillStyle = U.C.ink;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      U.dots(ctx, 0, 0, W, H, U.C.cream, .035, 15);
+
+      ctx.save();
+      U.panel(ctx, c.x, c.y, c.w, c.h, {
+        fill: U.C.cream, stroke: U.C.ink, lw: 3, r: 5,
+        shadow: U.C.orange, shadowX: 7, shadowY: 7
+      });
+
+      ctx.save();
+      D.roundRect(ctx, c.x, c.y, c.w, c.h, 5);
+      ctx.clip();
+      ctx.fillStyle = U.C.ink;
+      ctx.fillRect(c.x, c.y, c.w, 54);
+      U.dots(ctx, c.x, c.y, c.w, 54, U.C.cream, .055, 12);
+      ctx.restore();
+      U.text(ctx, 'SETTINGS  /  声音设置', c.x + 20, c.y + 20, {
+        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.cyan
+      });
+      U.text(ctx, 'AUDIO MIXER  /  两个滑块，实时生效', c.x + 20, c.y + 39, {
+        size: 7.2, weight: 500, family: U.F.cn, fill: 'rgba(245,235,216,.62)'
+      });
+      var close = { x: c.x + c.w - 42, y: c.y + 16, w: 26, h: 26 };
+      U.panel(ctx, close.x, close.y, close.w, close.h, {
+        fill: U.C.cream, stroke: U.C.ink, lw: 1.5, r: 2
+      });
+      U.text(ctx, '×', close.x + 13, close.y + 13, {
+        size: 17, weight: 900, family: U.F.mono, fill: U.C.ink, align: 'center'
+      });
+
+      U.text(ctx, 'AUDIO MIXER / 音量调节', c.x + 24, c.y + 80, {
+        size: 6.5, weight: 700, family: U.F.mono, fill: 'rgba(20,16,25,.45)'
+      });
+
+      var sliders = menu.sliderRects(st);
+      menu.drawVolumeRow(ctx, c, sliders.sfx, 'sfx', s.sfx, U.C.orange, '音效 SFX', 'UI / 炸弹 / 拾取 / 技能');
+      menu.drawVolumeRow(ctx, c, sliders.music, 'music', s.music, U.C.cyan, '音乐 MUSIC', '菜单 / 关卡 / BOSS');
+
+      U.text(ctx, '拖动滑块调整　·　M 全局静音　·　Esc 关闭', c.x + 24, c.y + 292, {
+        size: 7, weight: 500, family: U.F.cn, fill: 'rgba(20,16,25,.5)'
+      });
+      if (BI.sfx && BI.sfx.enabled === false) {
+        U.tag(ctx, '已静音 / MUTED', c.x + c.w - 24, c.y + 289, {
+          size: 5.8, family: U.F.mono, fill: U.C.pink, fg: U.C.ink,
+          padX: 6, h: 14, align: 'right', stroke: U.C.ink, lw: 1
+        });
+      }
+
+      var done = { x: c.x + c.w - 120, y: c.y + c.h - 48, w: 96, h: 30 };
+      U.panel(ctx, done.x, done.y, done.w, done.h, {
+        fill: U.C.yellow, stroke: U.C.ink, lw: 1.8, r: 3,
+        shadow: U.C.orange, shadowX: 3, shadowY: 3
+      });
+      U.text(ctx, '完成', done.x + done.w / 2, done.y + 15, {
+        size: 12, weight: 900, family: U.F.cn, fill: U.C.ink, align: 'center'
+      });
+      ctx.fillStyle = U.C.orange;
+      ctx.fillRect(c.x, c.y + c.h - 4, 54, 4);
+      ctx.restore();
+    },
+
+    drawVolumeRow: function (ctx, card, rect, kind, value, color, label, sub) {
+      value = clamp(value == null ? 1 : value, 0, 1);
+      var y = rect.y;
+      U.text(ctx, label, card.x + 24, y - 20, {
+        size: 14, weight: 900, family: U.F.cn, fill: U.C.ink
+      });
+      U.text(ctx, sub, card.x + 24, y - 7, {
+        size: 6, weight: 500, family: U.F.mono, fill: 'rgba(20,16,25,.42)'
+      });
+      U.text(ctx, Math.round(value * 100) + '%', card.x + card.w - 24, y - 20, {
+        size: 16, weight: 900, family: U.F.mono, fill: color, align: 'right'
+      });
+
+      ctx.fillStyle = 'rgba(20,16,25,.14)';
+      ctx.fillRect(rect.x, y, rect.w, rect.h);
+      ctx.fillStyle = color;
+      ctx.fillRect(rect.x, y, rect.w * value, rect.h);
+      ctx.fillStyle = U.C.ink;
+      for (var i = 1; i < 10; i++) {
+        ctx.fillRect(rect.x + rect.w * i / 10 - .5, y - 3, 1, rect.h + 6);
+      }
+      var kx = rect.x + rect.w * value;
+      ctx.save();
+      ctx.fillStyle = U.C.cream;
+      ctx.strokeStyle = U.C.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(kx, y + rect.h / 2, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(kx, y + rect.h / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     },
 
     drawFooter: function (ctx, st) {

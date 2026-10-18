@@ -63,6 +63,7 @@
     id: null,             // 期望播放的曲目 id
     el: null,             // 当前 <audio>
     gain: 0,              // 淡入进度 0..1
+    volume: 1,            // 设置层主音量倍数 0..1
     ready: false,         // 真的响起来了
     blocked: false,       // 被自动播放策略拦下（NotAllowedError），等用户交互
     failed: false,        // 环境不支持（无头 / 没有 Audio）
@@ -186,12 +187,25 @@
       else music._start(music.el);
     },
 
+    /** 设置音乐音量，pct 为 0..1；立即同步当前曲目与淡出中的旧曲 */
+    setVolume: function (pct) {
+      music.volume = Math.max(0, Math.min(1, Number(pct) || 0));
+      music.syncMute();
+      return music.volume;
+    },
+
+    getVolume: function () {
+      return music.volume;
+    },
+
     /** 静音开关（M 键）切完后同步过来：立刻生效，不等淡入淡出的下一帧 */
     syncMute: function () {
       var on = audible();
-      if (music.el && music.id) music.el.volume = on ? music.gain * TRACKS[music.id].volume : 0;
+      if (music.el && music.id) {
+        music.el.volume = on ? music.gain * TRACKS[music.id].volume * music.volume : 0;
+      }
       for (var i = 0; i < music._dying.length; i++) {
-        music._dying[i].el.volume = on ? music._dying[i].level : 0;
+        music._dying[i].el.volume = on ? music._dying[i].level * music.volume : 0;
       }
     },
 
@@ -202,7 +216,7 @@
       for (var i = music._dying.length - 1; i >= 0; i--) {
         var d = music._dying[i];
         d.level = Math.max(0, d.level - dt / FADE_OUT * d.base);
-        d.el.volume = audible() ? d.level : 0;
+        d.el.volume = audible() ? d.level * music.volume : 0;
         if (d.level <= 0) {
           try { d.el.pause(); d.el.currentTime = 0; } catch (e) {}
           music._dying.splice(i, 1);
@@ -210,7 +224,7 @@
       }
       if (!music.el || !music.id || music.suspended) return;
       if (music.gain < 1) music.gain = Math.min(1, music.gain + dt / FADE_IN);
-      music.el.volume = audible() ? music.gain * TRACKS[music.id].volume : 0;
+      music.el.volume = audible() ? music.gain * TRACKS[music.id].volume * music.volume : 0;
     },
 
     /** 彻底停掉（当前没有调用点，留给调试与将来的「返回标题」） */

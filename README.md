@@ -22,8 +22,12 @@
 >
 > **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v2.2.zip`，解压后双击里面的 `启动游戏.bat` 即可。
 > 也可以直接 `git clone` 本仓库，双击 `index.html` —— 两种方式都不需要安装任何东西。
+>
+> **动效短片**：[BOMBIT Motion ID · 1080p60](motion/out/BombIt_MotionID_1080p60.mp4) · [交互播放器](motion/index.html)
 
-![开始界面](docs/screenshot-menu.png)
+![模式选择](docs/ui-motion-menu.png)
+
+![角色选择与动效海报](docs/ui-motion-spirits.png)
 
 ---
 

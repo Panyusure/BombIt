@@ -456,6 +456,39 @@ window.addEventListener('load', async function () {
         '模式 '+mode+' 的角色卡不重叠');
     });
 
+    /* ---------- 10B. 设置：齿轮 / 音量滑块 ---------- */
+    group('10B. 设置：齿轮入口 / 音效与音乐滑块');
+    D.gotoMenu();
+    var gear = BI.menu.SETTINGS_BUTTON;
+    ok(gear.x > BI.menu.REPLAY_BUTTON.x + BI.menu.REPLAY_BUTTON.w &&
+       gear.x + gear.w <= CFG.VIEW_W,
+       '齿轮入口在回放按钮右侧', gear.x + '/' + (BI.menu.REPLAY_BUTTON.x + BI.menu.REPLAY_BUTTON.w));
+    click(gear.x + gear.w / 2, gear.y + gear.h / 2);
+    D.tick(1 / 60);
+    unclick();
+    ok(D.app.menu.settings.open, '点齿轮打开设置');
+    var sliders = BI.menu.sliderRects(D.app.menu);
+    click(sliders.sfx.x + sliders.sfx.w * .5, sliders.sfx.y + 4);
+    D.tick(1 / 60);
+    unclick();
+    ok(Math.abs(BI.sfx.getVolume() - .5) < .03 && Math.abs(D.app.menu.settings.sfx - .5) < .03,
+       '音效滑块拖到 50% 后实际音量与界面同步', String(BI.sfx.getVolume()));
+    click(sliders.music.x + sliders.music.w * .35, sliders.music.y + 4);
+    D.tick(1 / 60);
+    unclick();
+    ok(Math.abs(BI.music.getVolume() - .35) < .03 && Math.abs(D.app.menu.settings.music - .35) < .03,
+       '音乐滑块拖到 35% 后实际音量与界面同步', String(BI.music.getVolume()));
+    D.press('Escape');
+    ok(!D.app.menu.settings.open, 'Esc 关闭设置');
+    BI.sfx.setVolume(1);
+    BI.music.setVolume(1);
+    D.app.menu.settings.sfx = 1;
+    D.app.menu.settings.music = 1;
+    try {
+      localStorage.removeItem('bombit.sfx.volume');
+      localStorage.removeItem('bombit.music.volume');
+    } catch (e) {}
+
     /* ---------- 11. 音效 ---------- */
     group('11. 音效：解锁 / 播放 / 静音');
     ok(typeof window.AudioContext !== 'undefined' ||
