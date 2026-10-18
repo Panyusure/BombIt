@@ -16,6 +16,8 @@ function migrate(folder = storage.locations().replays, apply = false) {
     const config = normalizeConfig({mode:replay.config?.mode,seed:replay.config?.seed,
       character:replay.config?.chars?.[0],character2:replay.config?.chars?.[1]});
     const meta = replay.recording;
+    // 旧档可能没有开始时间：用文件修改时间兜底，免得把「迁移时刻」写进回放名
+    if (!meta.startedAt) meta.startedAt = fs.statSync(source).mtime.toISOString();
     storage.recording(meta.agent,meta.startedAt); // validate agent; preserve the existing ID and date
     requireThat(/^[0-9a-f]{6}$/.test(meta.id) && ['win','loss','draw','stopped'].includes(meta.outcome), 'INVALID_REPLAY', 'Invalid recording identity: '+name);
     const target = path.join(folder,storage.basename(meta,config,meta.outcome));

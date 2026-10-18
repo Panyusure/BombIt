@@ -87,8 +87,8 @@
       return moved;
     },
 
-    /** 踢弹：撞到炸弹就把它推出去（吃到踢弹道具后才生效） */
-    kickCheck: function (world, p, hx, hy) {
+    /** 推弹：撞到炸弹就把它推出去（吃到推弹手套后才生效） */
+    pushCheck: function (world, p, hx, hy) {
       if (hx === 0 && hy === 0) return false;
       if (hx && hy) { if (p.axisPref === 'y') hx = 0; else hy = 0; }
       for (var i = 0; i < world.bombs.length; i++) {
@@ -98,7 +98,7 @@
         var ahead = (pos.x-p.x)*hx+(pos.y-p.y)*hy > 0;
         var side = Math.abs((pos.y-p.y)*hx-(pos.x-p.x)*hy) < 21;
         if (ahead && side && close && !b.slide && b.freeFor === null) {
-          b.slide = { dc: hx, dr: hy, t: 0, speed: CFG.KICK_SPEED };
+          b.slide = { dc: hx, dr: hy, t: 0, speed: CFG.PUSH_SPEED };
           return true;
         }
       }

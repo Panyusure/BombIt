@@ -104,7 +104,7 @@
         SFX.play('pickup');
         FX.pickup(item.c * CFG.TILE + CFG.TILE / 2,
                   item.r * CFG.TILE + CFG.TILE / 2,
-                  ({fire:'火力+1',bomb:'炸弹数量+1',speed:'速度+10%',fruit:'拾取生命果实',star:'无敌6秒',shield:'获得护盾',glove:'获得推弹手套',kick:'获得踢弹能力'})[item.type] || info.label);
+                  ({fire:'火力+1',bomb:'炸弹数量+1',speed:'速度+10%',fruit:'拾取生命果实',star:'无敌6秒',shield:'获得护盾',glove:'获得推弹手套'})[item.type] || info.label);
       },
       onShieldBreak: function (p) {
         SFX.play('shieldBreak');

@@ -570,11 +570,11 @@
       ctx.lineWidth = 2; ctx.strokeStyle = '#39445c';
       function shape(fill) { ctx.fillStyle = fill; ctx.fill(); ctx.stroke(); }
       function dot(x, y, r, color) { D.circle(ctx, x, y, r); ctx.fillStyle = color; ctx.fill(); }
-      if (type === 'speed' || type === 'kick') {
+      if (type === 'speed') {
         ctx.beginPath(); ctx.moveTo(-12, 1); ctx.lineTo(-9, -9);
         ctx.quadraticCurveTo(-4, -5, 0, -8); ctx.lineTo(4, -1);
         ctx.quadraticCurveTo(14, -1, 14, 6); ctx.lineTo(13, 10);
-        ctx.lineTo(-12, 10); ctx.closePath(); shape(type === 'kick' ? '#bd98ff' : '#6de0b6');
+        ctx.lineTo(-12, 10); ctx.closePath(); shape('#6de0b6');
         ctx.beginPath(); ctx.moveTo(-11, 6); ctx.lineTo(13, 6); ctx.stroke();
         ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(-3, -3); ctx.lineTo(2, -4);
         ctx.moveTo(0, 0); ctx.lineTo(5, -1); ctx.stroke();

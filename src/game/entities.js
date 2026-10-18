@@ -117,7 +117,7 @@
         maxHp: t.hp,
         power: t.power, bombGap: t.bombGap, windup: 0, abilityCd: 2.5,
         level: level || 1, maxBombs: 1, picked: {}, speedBonus: 0,
-        shield: 0, starTime: 0, glove: false, kick: false,
+        shield: 0, starTime: 0, glove: false,
 
         x: G.centerX(c), y: G.centerY(r),
         px: G.centerX(c), py: G.centerY(r),
@@ -157,11 +157,26 @@
     /**
      * 在离玩家足够远的地方撒敌人。
      * 出生点保护（§4.3）：至少隔 6 格，否则开局就被贴脸。
+     *
+     * 光按「这格现在好不好站」排序是不够的：传送带环路被场景强制留空，
+     * 地图上绝大多数现成空地都在带子上，小怪就会全部挤在环路旁边。
+     * 所以候选格按「离环路多远」整体后移（贴边 +1 档、正好在带上 +2 档），
+     * 再用最远点采样式的贪心把出生点彼此拉开；实在挑不满才逐步放宽。
      */
     spawn: function (world, count, level, rng) {
       var COLS = G.cols(world.map), ROWS = G.rows(world.map);
       var pc = G.col(world.players[0].x), pr = G.row(world.players[0].y);
       var T = BI.T;
+      var track = (world.map.landmark && world.map.landmark.path) || [];
+
+      /** 到环路（传送带 / 木马环道）的曼哈顿距离；没有环路时大家一样远 */
+      function trackGap(c, r) {
+        var best = 99;
+        for (var i = 0; i < track.length; i++) {
+          best = Math.min(best, Math.abs(track[i][0] - c) + Math.abs(track[i][1] - r));
+        }
+        return best;
+      }
 
       var cells = [];
       for (var r = 1; r < ROWS - 1; r++) {
@@ -183,21 +198,42 @@
               var area = BI.levelgen.bfs(world.map, G.idx(c,r,world.map), function(v) { return v === T.EMPTY; });
               ready = Array.prototype.filter.call(area, Boolean).length >= 10;
             }
-            cells.push([c, r, ready ? 0 : G.at(world.map,c,r) === T.EMPTY ? 1 : 2]);
+            // 档位：0 = 现成开阔空地，1 = 空地但偏窄，2 = 软砖（靠出生窝清出来）；
+            // 再按「离环路多远」整体后移 —— 紧贴环路 +1，正好落在带子上 +2。
+            // 传送带格子上出生的怪物会立刻被带子送走，贴边的也会一开局就上带，
+            // 所以只有实在没有别的空地时才让它落在环路一带。
+            // 同一档内保持随机，避免固定挑地图最远的角落。
+            var gap = trackGap(c, r);
+            var rank = ready ? 0 : G.at(world.map,c,r) === T.EMPTY ? 1 : 2;
+            cells.push({ c: c, r: r, gap: gap,
+              tier: rank + (gap >= 2 ? 0 : gap === 1 ? 1 : 2) });
           }
         }
       }
 
+      // 先打乱、再用稳定排序分层：同档的格子顺序随机，重开不会总挑同一批
       rng.shuffle(cells);
-      cells.sort(function (a,b) { return a[2]-b[2]; });
-      var made = 0;
-      for (var i = 0; i < count && i < cells.length; i++) {
-        var type = entities.pickType(rng, level, i);
-        // 先留足撤离投弹的空间，再让怪物自行炸开外围障碍。
-        entities.openSpawnPocket(world, cells[i][0], cells[i][1]);
-        if (!world.nextEntityId) world.nextEntityId = 1;
-        world.enemies.push(entities.create(type, cells[i][0], cells[i][1], level, world));
-        made++;
+      cells.sort(function (a, b) { return a.tier - b.tier; });
+
+      // 贪心挑选：先要求出生点至少隔 4 格，再放宽到 2 格，最后只要求不重叠
+      var picked = [], made = 0, spacing = [4, 2, 0];
+      for (var pass = 0; pass < spacing.length && made < count; pass++) {
+        for (var i = 0; i < cells.length && made < count; i++) {
+          var cell = cells[i];
+          if (cell.used) continue;
+          var spread = true;
+          for (var m = 0; m < picked.length; m++) {
+            if (Math.abs(picked[m][0] - cell.c) + Math.abs(picked[m][1] - cell.r) < spacing[pass]) { spread = false; break; }
+          }
+          if (!spread) continue;
+          cell.used = true;
+          picked.push([cell.c, cell.r]);
+          // 先留足撤离投弹的空间，再让怪物自行炸开外围障碍。
+          entities.openSpawnPocket(world, cell.c, cell.r);
+          if (!world.nextEntityId) world.nextEntityId = 1;
+          world.enemies.push(entities.create(entities.pickType(rng, level, made), cell.c, cell.r, level, world));
+          made++;
+        }
       }
       return made;
     },

@@ -43,12 +43,15 @@
     FUSE: 2.40,                    // 玩家、小怪与 BOSS 共用的引信时长（秒）
     FUSE_BLINK: 0.60,              // 最后多少秒开始急闪
     FLAME_TIME: 0.45,              // 火焰持续时间
-    KICK_SPEED: 9.0,               // 踢弹滑行速度（格/秒）
+    PUSH_SPEED: 9.0,               // 推弹手套推动炸弹时的滑行速度（格/秒）
     SHOW_FUSE_TIMER: false,        // 倒计时环 + 剩余秒数 —— 默认关
     BURN_ITEMS: true,              // 爆炸会烧掉地上的道具（经典规则）
 
     /* ---------- 地图生成 ---------- */
-    BRICK_RATE: { dig: 0.74, versus: 0.66, adventure: 0.72 },
+    // 软砖占「非硬墙格」的比例。这里是**生成概率**：硬墙先摆好，剩下的空格
+    // 按这个概率变软砖，之后再按出生点保护清掉几块，所以场上看到的软砖
+    // 会比这里的数字略低一点（传送带环路那几格永远是空地）。
+    BRICK_RATE: { dig: 0.62, versus: 0.56, adventure: 0.60 },
     RANDOM_WALLS: true,            // 硬墙随机摆放（false = 经典棋盘格柱子）
     WALL_RATE: 0.24,               // 随机硬墙的目标密度（占内部格子比例）
     MIN_EXITS: 1,                  // 每个可走格子至少要有的出口数
@@ -110,7 +113,7 @@
   BI.T = { EMPTY: 0, HARD: 1, BRICK: 2 };
 
   // 道具类型
-  BI.ITEM = { FIRE: 'fire', BOMB: 'bomb', SPEED: 'speed', FRUIT: 'fruit', STAR: 'star', SHIELD: 'shield', KICK: 'kick', GLOVE: 'glove' };
+  BI.ITEM = { FIRE: 'fire', BOMB: 'bomb', SPEED: 'speed', FRUIT: 'fruit', STAR: 'star', SHIELD: 'shield', GLOVE: 'glove' };
 
   BI.ITEM_INFO = {
     fire:   { label: '火力', short: '火', color: '#ff8a5c' },
@@ -119,7 +122,6 @@
     fruit:  { label: '生命果实', color: '#f4bd83' },
     star:   { label: '无敌星星', color: '#ffd45e' },
     shield: { label: '护盾', short: '盾', color: '#63b8ff' },
-    kick:   { label: '踢弹', short: '踢', color: '#c78bff' },
     glove:  { label: '推弹手套', short: '推', color: '#f3b277' }
   };
 

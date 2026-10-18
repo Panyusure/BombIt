@@ -89,7 +89,7 @@ function makePlayer(id, c, r) {
     x: G.centerX(c), y: G.centerY(r), px: G.centerX(c), py: G.centerY(r),
     facing: 1, moving: false, axisPref: 'x',
     power: CFG.START_POWER, maxBombs: CFG.START_BOMBS, bombsOut: 0,
-    speedBonus: 0, shield: 0, starTime: 0, kick: false, invuln: 0, squash: 0,
+    speedBonus: 0, shield: 0, starTime: 0, glove: false, invuln: 0, squash: 0,
     alive: true, deadAt: 0, lives: 3, picked: {}
   };
 }
@@ -98,7 +98,7 @@ function makeWorld(map, players) {
   const w = {
     mode: 'solo', map, bombs: [], flames: [], items: [], players: players || [],
     enemies: [], danger: null, time: 0, rng: BI.makeRng(12345),
-    burnItems: CFG.BURN_ITEMS, itemPool: 'core',
+    burnItems: CFG.BURN_ITEMS,
     stats: { explosions: 0, kills: 0 },
     playerById(id) { return this.players.find(p => p.id === id) || null; },
     onExplode() { this.stats.explosions++; },
@@ -504,23 +504,23 @@ group('7. 道具拾取 / 伤害 / 护盾');
 }
 
 /* ============================================================
- * 8. 踢弹
+ * 8. 推弹手套
  * ============================================================ */
-group('8. 踢弹：炸弹沿方向滑行，撞到障碍停下');
+group('8. 推弹手套：炸弹沿方向滑行，撞到障碍停下');
 {
   const map = emptyMap();
   map[G.idx(9, 5)] = T.HARD;
   const p = makePlayer('p1', 5, 5);
-  p.kick = true;
+  p.glove = true;
   const w = makeWorld(map, [p]);
 
   R.tryPlaceBomb(w, p);
   const bomb = w.bombs[0];
   bomb.freeFor = null;
 
-  // 站到炸弹左边，往右踢
+  // 站到炸弹左边，往右推
   p.x = G.centerX(5) - 32;
-  ok(MO.kickCheck(w, p, 1, 0) === true, '撞到炸弹触发了踢弹');
+  ok(MO.pushCheck(w, p, 1, 0) === true, '撞到炸弹触发了推弹');
   ok(bomb.slide && bomb.slide.dc === 1, '滑行方向正确');
 
   for (let i = 0; i < 300; i++) R.updateBombs(w, 1 / 60);
@@ -1553,9 +1553,13 @@ group('17b. 背景音乐：场景映射与无音频环境降级');
      M.tracks.level.file === 'assets/audio/level-1.mp3' && M.tracks.level2.file === 'assets/audio/level-2.mp3' &&
      M.tracks.boss.file === 'assets/audio/boss-1.mp3' && M.tracks.boss2.file === 'assets/audio/boss-2.mp3',
      '五首 AI 配乐按用户标注映射到对应场景');
-  ok(['boss', 'boss2'].every(id => M.tracks[id].volume <= .08 &&
-     M.tracks[id].volume <= Math.min(M.tracks.level.volume, M.tracks.level2.volume) * .6),
-     '两首人声 BOSS 曲保持较低音量，不盖过对局音效');
+  // 玩家反馈：BOSS 曲曾被人声顾虑压到普通关的四分之一，小到几乎听不见。
+  // 现在两首 BOSS 曲只比普通关低一成多（0.18 对 0.22），仍在音效主音量之下。
+  ok(['boss', 'boss2'].every(id => M.tracks[id].volume >= M.tracks.level.volume * .75 &&
+     M.tracks[id].volume <= M.tracks.level.volume * 1.1 &&
+     M.tracks[id].volume <= BI.sfx.volume * .5),
+     '两首 BOSS 曲贴近普通关音量，不再被压到听不见',
+     ['menu', 'level', 'level2', 'boss', 'boss2'].map(id => id + '=' + M.tracks[id].volume).join(' '));
 
   // 场景 → 曲目
   ok(M.trackFor({ scene: 'menu' }) === 'menu', '开始界面放菜单曲');
@@ -2411,15 +2415,15 @@ group('27. 炸弹实际碰撞 / 传送带运弹 / 场景障碍密度');
   ok(G.canStand(w.map,w.bombs,p.x,p.y,CFG.BOX,p.id),'截图中斜角有明显空隙的位置不会被炸弹整格碰撞卡住');
   const oldX=p.x;MO.step(w,p,-1,0,dt);ok(p.x<oldX,'斜角空隙处可以自由远离炸弹');
   const kw=makeWorld(emptyMap(),[makePlayer('p1',5,5)]),kp=kw.players[0],kb=makeBomb(5,5);
-  kw.bombs=[kb];kp.x-=32;ok(MO.kickCheck(kw,kp,1,0),'真正靠近时可以踢弹');
+  kw.bombs=[kb];kp.x-=32;ok(MO.pushCheck(kw,kp,1,0),'真正靠近时可以推弹');
   const initial=G.bombPosition(kb).x;R.updateBombs(kw,dt);
-  ok(Math.abs(G.bombPosition(kb).x-initial-CFG.KICK_SPEED*CFG.TILE*dt)<1e-6,
-    '踢弹从原位置连续向前移动，第一帧不会显示到上一格');
+  ok(Math.abs(G.bombPosition(kb).x-initial-CFG.PUSH_SPEED*CFG.TILE*dt)<1e-6,
+    '推弹从原位置连续向前移动，第一帧不会显示到上一格');
   for(let i=0;i<9;i++)R.updateBombs(kw,dt);
   ok(G.canStand(kw.map,kw.bombs,initial,G.centerY(5),CFG.BOX,'other'),'炸弹离开后旧位置不残留空气墙');
   const offset=makeWorld(emptyMap(),[makePlayer('p1',5,5)]),ob=makeBomb(5,5),op=offset.players[0];
   ob.x=G.centerX(5)+18;ob.y=G.centerY(5);offset.bombs=[ob];op.x=ob.x-32;
-  ok(G.col(op.x)===ob.cx&&MO.kickCheck(offset,op,1,0),'炸弹偏离格心时仍能从实际接触位置踢动，不依赖旧目标格');
+  ok(G.col(op.x)===ob.cx&&MO.pushCheck(offset,op,1,0),'炸弹偏离格心时仍能从实际接触位置推动，不依赖旧目标格');
   op.maxBombs=2;op.x=G.centerX(5);ob.cx=6;ob.x=G.centerX(5)+30;
   ok(!R.tryPlaceBomb(offset,op),'移动炸弹进入邻格后，不能在其弹身附近重叠放置另一颗炸弹');
   const overlap=makeWorld(emptyMap(),[makePlayer('p1',5,5),makePlayer('p2',5,5)]);
@@ -2430,7 +2434,7 @@ group('27. 炸弹实际碰撞 / 传送带运弹 / 场景障碍密度');
   function factory(){const rng=BI.makeRng(79),lvl=BI.levelgen.generate(rng,{theme:'factory',mode:'adventure'});return makeWorld(lvl.map,[makePlayer('p1',1,1)]);}
   const fw=factory(),path=fw.map.landmark.path,fb=makeBomb(path[0][0],path[0][1]);fw.bombs=[fb];
   const start=G.bombPosition(fb);R.updateBombs(fw,.25);
-  ok(Math.abs(G.bombPosition(fb).x-start.x-1.65*CFG.TILE*.25)<1e-6,'炸弹以实际带速连续运送，不需要踢弹道具');
+  ok(Math.abs(G.bombPosition(fb).x-start.x-1.65*CFG.TILE*.25)<1e-6,'炸弹以实际带速连续运送，不需要推弹道具');
   let corners=new Set();
   for(let i=0;i<Math.round((path.length/1.65-.25)/dt);i++){
     R.updateBombs(fw,dt);corners.add(fb.cx+','+fb.cy);
@@ -2456,15 +2460,16 @@ group('27. 炸弹实际碰撞 / 传送带运弹 / 场景障碍密度');
   for(const theme of ['forest','factory','park'])for(let seed=1;seed<=24;seed++){
     const rng=BI.makeRng(seed),lvl=BI.levelgen.generate(rng,{theme,mode:'adventure'}),nw=makeWorld(lvl.map,[makePlayer('p1',1,1)]);
     BI.entities.spawn(nw,BI.entities.countFor(1),1,rng);
-    if(BI.match.countBricks(nw.map)<40)densityBad++;
+    if(BI.match.countBricks(nw.map)<34)densityBad++;
     nw.enemies.forEach(e=>{const c=G.col(e.x),r=G.row(e.y),area=BI.levelgen.bfs(nw.map,G.idx(c,r),v=>v===T.EMPTY);
       if(Array.from(area).filter(Boolean).length<10||[[1,0],[-1,0],[0,1],[0,-1]].filter(d=>G.at(nw.map,c+d[0],r+d[1])===T.EMPTY).length<2)pocketsBad++;
     });
     const bossLevel=BI.levelgen.generateBoss(BI.makeRng(seed),'',theme),bw=makeWorld(bossLevel.map,[makePlayer('p1',1,1)]);
     BI.entities.spawn(bw,1,5,BI.makeRng(seed));
-    if(bossLevel.theme!==theme||bw.map.length!==195||!bw.map.landmark||BI.match.countBricks(bw.map)<40||bw.enemies[0].type!=='boss')themeBad++;
+    if(bossLevel.theme!==theme||bw.map.length!==195||!bw.map.landmark||BI.match.countBricks(bw.map)<34||bw.enemies[0].type!=='boss')themeBad++;
   }
-  ok(!densityBad,'72张开局地图在怪物出生后均保留至少40个可破坏障碍',String(densityBad));
+  // 阈值随「软砖生成概率降到 60% 档」一起下调（原为 40）：一局仍有两倍于此的障碍量
+  ok(!densityBad,'72张开局地图在怪物出生后均保留至少34个可破坏障碍',String(densityBad));
   ok(!pocketsBad,'增加障碍后仍保留怪物两个空出口及十格活动空间',String(pocketsBad));
   ok(!themeBad,'72张 BOSS 地图全部使用原三场景，保留设施与足够障碍',String(themeBad));
 }
@@ -2476,7 +2481,7 @@ group('28. 推弹手套 / 木马运弹 / 古树障碍 / 索敌成长与拾取');
   for(const dir of [[1,0],[-1,0],[0,1],[0,-1]]) {
     const p=makePlayer('p1',5,5),w=makeWorld(emptyMap(),[p]),b=bomb(5+dir[0],5+dir[1]);
     p.x+=dir[0]*16;p.y+=dir[1]*16;R.applyItem(p,'glove','adventure');w.bombs=[b];
-    ok(MO.kickCheck(w,p,...dir)&&b.slide,'手套支持方向 '+dir+' 的接触推弹');
+    ok(MO.pushCheck(w,p,...dir)&&b.slide,'手套支持方向 '+dir+' 的接触推弹');
     for(let i=0;i<60;i++)R.updateBombs(w,dt);
     ok(w.bombs.includes(b)&&!b.slide&&w.stats.explosions===0&&Math.abs(b.fuse-1.4)<.001,'推弹方向 '+dir+' 在尽头停止，引信保持连续倒数');
     for(let i=0;i<120&&w.bombs.includes(b);i++)R.updateBombs(w,dt);
@@ -2485,7 +2490,7 @@ group('28. 推弹手套 / 木马运弹 / 古树障碍 / 索敌成长与拾取');
   }
   const blocked=makeWorld(emptyMap(),[makePlayer('p1',5,5)]),bp=blocked.players[0],bb=bomb(6,5);
   G.set(blocked.map,8,5,T.BRICK);bp.x+=16;bp.glove=true;blocked.bombs=[bb];
-  MO.kickCheck(blocked,bp,1,0);
+  MO.pushCheck(blocked,bp,1,0);
   R.updateBombs(blocked,.1);
   ok(blocked.bombs.includes(bb)&&bb.slide&&Math.abs(bb.fuse-2.3)<.001,'手套弹滑行途中继续消耗原引信');
   const slideView=DG.timeline(blocked);
@@ -2498,16 +2503,16 @@ group('28. 推弹手套 / 木马运弹 / 古树障碍 / 索敌成长与拾取');
   ok(!blocked.bombs.length&&G.at(blocked.map,8,5)===T.EMPTY,'受阻后的炸弹在原引信到时才爆炸并破坏障碍');
   const shortFuse=makeWorld(emptyMap(),[makePlayer('p1',5,5)]),short= bomb(6,5);
   short.fuse=.03;shortFuse.players[0].x+=16;shortFuse.players[0].glove=true;shortFuse.bombs=[short];
-  MO.kickCheck(shortFuse,shortFuse.players[0],1,0);R.updateBombs(shortFuse,.02);R.updateBombs(shortFuse,.02);
+  MO.pushCheck(shortFuse,shortFuse.players[0],1,0);R.updateBombs(shortFuse,.02);R.updateBombs(shortFuse,.02);
   ok(!shortFuse.bombs.length&&short.cx===6&&shortFuse.stats.explosions===1,'引信在滑行途中耗尽时就地爆炸，不延长到终点');
   const chain=makeWorld(emptyMap(),[makePlayer('p1',5,5)]),cp=chain.players[0],cb=bomb(6,5),target=bomb(8,5);
-  cp.x+=16;cp.glove=true;chain.bombs=[cb,target];MO.kickCheck(chain,cp,1,0);
+  cp.x+=16;cp.glove=true;chain.bombs=[cb,target];MO.pushCheck(chain,cp,1,0);
   for(let i=0;i<60;i++)R.updateBombs(chain,dt);
   ok(chain.stats.explosions===0&&chain.bombs.length===2&&!cb.slide,'推动的炸弹碰到另一颗炸弹时只停止，不立即连锁');
   for(let i=0;i<120&&chain.bombs.length;i++)R.updateBombs(chain,dt);
   ok(chain.stats.explosions===2&&!chain.bombs.length,'推弹原引信到时正常连锁，无数组错误');
   const actor=makeWorld(emptyMap(),[makePlayer('p1',5,5),makePlayer('p2',8,5)]),ab=bomb(6,5);
-  actor.players[0].glove=true;actor.players[0].x+=16;actor.bombs=[ab];MO.kickCheck(actor,actor.players[0],1,0);
+  actor.players[0].glove=true;actor.players[0].x+=16;actor.bombs=[ab];MO.pushCheck(actor,actor.players[0],1,0);
   for(let i=0;i<60;i++)R.updateBombs(actor,dt);
   ok(actor.bombs.includes(ab)&&!ab.slide&&actor.stats.explosions===0&&actor.players[1].x-G.bombPosition(ab).x>=CFG.BOMB_RADIUS+CFG.PLAYER_BOMB_RADIUS,
     '推弹接触玩家时受阻停下，不挤入身体也不提前爆炸');
@@ -2768,7 +2773,7 @@ group('31. 无敌碰撞普通伤害 / 破盾保护 / 推弹计时一致性');
   ok(!victim.alive&&victim.lives===2&&playerBreaks===1,'保护结束后再受伤才扣一条命，不重复碎盾或扣命');
 
   const frozen=makeWorld(emptyMap(),[makePlayer('p1',5,5)]),frozenBomb={cx:6,cy:5,power:1,fuse:1.2,ownerId:'npc',freeFor:null,byEnemy:true};
-  frozen.players[0].x+=16;frozen.players[0].glove=true;frozen.bombs=[frozenBomb];MO.kickCheck(frozen,frozen.players[0],1,0);
+  frozen.players[0].x+=16;frozen.players[0].glove=true;frozen.bombs=[frozenBomb];MO.pushCheck(frozen,frozen.players[0],1,0);
   frozen.timeStop={remaining:3};const before=G.bombPosition(frozenBomb);R.updateBombs(frozen,.5);
   ok(frozenBomb.fuse===1.2&&G.bombPosition(frozenBomb).x===before.x,'被手套推动的敌弹仍遵守小诺时停，运动与引信同时冻结');
   frozen.timeStop=null;R.updateBombs(frozen,.1);
@@ -2926,6 +2931,170 @@ group('35. 正背面朝向：转弯 / 停下 / 对角输入 / 碰墙');
   p.axisPref='x';MO.step(w,p,-1,-1,dt);ok(p.facingDir==='left'&&p.facing===-1,'对角按键优先横轴时显示侧向正面');
   p.x=G.centerX(1);p.y=G.centerY(1);MO.step(w,p,0,-1,.2);
   ok(p.facingDir==='up'&&G.row(p.y)===1,'面对上方墙壁时可以转身，不越过边界');
+}
+
+/* ============================================================
+ * 36. 本轮调整：传送带僵持 / 软砖密度 / 小怪出生分布
+ *
+ * 三件事都来自实机反馈：
+ *   · 传送带上小怪被炸弹卡住后，两个都不再随带走（互相钉死）
+ *   · 软砖太多，几乎整张图都要炸过去
+ *   · 小怪出生点全挤在传送带边上
+ * ============================================================ */
+group('36. 本轮调整：传送带僵持 / 软砖密度 / 小怪出生分布');
+{
+  const EN = BI.entities, SC = BI.scenery, dt = 1 / 60;
+  const spawns = [[1, 1], [CFG.COLS - 2, CFG.ROWS - 2]];
+
+  function factoryWorld(seed) {
+    const rng = BI.makeRng(seed);
+    const lvl = BI.levelgen.generate(rng, { mode: 'adventure', theme: 'factory' });
+    const w = makeWorld(lvl.map, [makePlayer('p1', 1, 1)]);
+    w.mode = 'adventure'; w.theme = 'factory'; w.rng = rng;
+    return { w: w, path: lvl.map.landmark.path };
+  }
+
+  /* ---- 1. 规则本身：重叠可以往外离开，圈外不能往里挤 ---- */
+  {
+    const w = makeWorld(emptyMap(), [makePlayer('p1', 1, 1)]);
+    const mon = EN.create('gugu', 5, 5, 1); w.enemies.push(mon);
+    const bomb = { cx: 5, cy: 5, power: 1, fuse: 9, ownerId: 'p1', freeFor: null };
+    w.bombs.push(bomb);
+    const gap = () => Math.hypot(mon.x - G.bombPosition(bomb).x, mon.y - G.bombPosition(bomb).y);
+    mon.x = G.centerX(5) - 6; mon.y = G.centerY(5);
+    ok(gap() < CFG.ENEMY_BOX / 2 + CFG.BOMB_RADIUS && G.canMoveEnemy(w, mon, mon.x - 4, mon.y),
+       '小怪与炸弹重叠（玩家把弹放在它身上）时可以向外移动');
+    ok(!G.canMoveEnemy(w, mon, mon.x + 4, mon.y), '重叠时仍然不能朝炸弹中心挤进去');
+    mon.x = G.centerX(5) + 40;
+    ok(G.canMoveEnemy(w, mon, mon.x + 10, mon.y), '没重叠时向外照常走');
+    ok(!G.canMoveEnemy(w, mon, mon.x - 12, mon.y), '没重叠时进不了 32 像素碰撞圈');
+  }
+
+  /* ---- 2. 实机场景：带上的小怪被放了炸弹，两者都要继续随带走 ---- */
+  {
+    let pinned = 0, enemyRide = 0, bombRide = 0, detail = '';
+    for (let seed = 1; seed <= 12; seed++) {
+      const f = factoryWorld(seed * 7919), w = f.w, cell = f.path[6];
+      const mon = EN.create('gugu', cell[0], cell[1], 1, w);
+      mon.dir = null;                       // 不主动走，只看传送带送不送
+      w.enemies.push(mon);
+      const bomb = { cx: cell[0], cy: cell[1], power: 1, fuse: 1e9, ownerId: 'p1', freeFor: null, byEnemy: false };
+      bomb.x = G.centerX(cell[0]) - 6; bomb.y = G.centerY(cell[1]);   // 与它重叠 6 像素
+      w.bombs.push(bomb);
+
+      const visited = new Set(); let travel = 0;
+      let lastX = G.bombPosition(bomb).x, lastY = G.bombPosition(bomb).y;
+      for (let frame = 0; frame < 60 * 8; frame++) {
+        w.time += dt;
+        SC.carry(w, mon, dt, false);
+        R.updateBombs(w, dt);
+        visited.add(G.col(mon.x) + ',' + G.row(mon.y));
+        const pos = G.bombPosition(bomb);
+        travel += Math.hypot(pos.x - lastX, pos.y - lastY);
+        lastX = pos.x; lastY = pos.y;
+      }
+      if (visited.size < 4) pinned++;
+      if (visited.size >= 4) enemyRide++;
+      if (travel >= CFG.TILE * 3) bombRide++;
+      if (!detail && visited.size < 4) detail = '种子 ' + seed + ' 只走过 ' + visited.size + ' 格';
+    }
+    ok(pinned === 0, '身上被放了炸弹的小怪仍随传送带离开原格，不会被永久钉死', detail);
+    ok(enemyRide === 12, '12 局里小怪都随带走过多格', enemyRide + '/12');
+    ok(bombRide === 12, '炸弹跟着传送带一起走，两个一起随带移动', bombRide + '/12');
+  }
+
+  /* ---- 3. 反向检查：从外面顶住炸弹时仍然停下，不穿弹身 ---- */
+  {
+    const f = factoryWorld(1234), w = f.w;
+    const from = f.path[6], to = f.path[7];          // 带方向上相邻的两格
+    const bomb = { cx: to[0], cy: to[1], power: 1, fuse: 1e9, ownerId: 'p1', freeFor: null };
+    w.bombs.push(bomb);
+    const mon = EN.create('gugu', from[0], from[1], 1, w);
+    mon.dir = null; w.enemies.push(mon);
+    let minGap = 1e9;
+    for (let frame = 0; frame < 60 * 3; frame++) {
+      w.time += dt;
+      SC.carry(w, mon, dt, false);
+      const pos = G.bombPosition(bomb);
+      minGap = Math.min(minGap, Math.hypot(mon.x - pos.x, mon.y - pos.y));
+    }
+    ok(minGap >= CFG.ENEMY_BOX / 2 + CFG.BOMB_RADIUS - .01,
+       '被带子推向炸弹时停在弹身前，仍然不会穿进去', minGap.toFixed(2) + 'px');
+  }
+
+  /* ---- 4. 软砖密度：生成概率降到 60% 档，地图跟着变稀 ---- */
+  {
+    ok(CFG.BRICK_RATE.adventure <= .62 && CFG.BRICK_RATE.versus <= .58 && CFG.BRICK_RATE.dig <= .64,
+       '三种模式的软砖生成概率都降到 60% 档', JSON.stringify(CFG.BRICK_RATE));
+    const dens = {};
+    let densest = 0;
+    for (const theme of ['forest', 'factory', 'park']) {
+      let sum = 0, n = 0;
+      for (let seed = 1; seed <= 80; seed++) {
+        const lvl = BI.levelgen.generate(BI.makeRng(seed * 7919 + theme.length),
+          { mode: 'adventure', theme, spawns: spawns });
+        let b = 0, o = 0;
+        for (let i = 0; i < lvl.map.length; i++) {
+          if (lvl.map[i] === T.BRICK) b++; else if (lvl.map[i] === T.EMPTY) o++;
+        }
+        const d = b / (b + o);
+        densest = Math.max(densest, d);
+        sum += d; n++;
+      }
+      dens[theme] = sum / n;
+    }
+    // 森林没有传送带清空，最接近生成概率本身；工厂、游乐园的环路永远是空地
+    ok(dens.forest > .48 && dens.forest < .58,
+       '森林场景的软砖占比落在 60% 档（无环路清空）', (dens.forest * 100).toFixed(1) + '%');
+    ok(dens.factory < .48 && dens.park < .50,
+       '工厂与游乐园因为环路留白，占比更低', '工厂 ' + (dens.factory * 100).toFixed(1) + '% / 游乐园 ' + (dens.park * 100).toFixed(1) + '%');
+    ok(densest < .66, '没有任何一张图回到 70% 以上的堆砖密度', (densest * 100).toFixed(1) + '%');
+  }
+
+  /* ---- 5. 小怪出生分布：不落在传送带上，彼此拉开 ---- */
+  {
+    let onTrack = 0, nearTrack = 0, total = 0, nearest = 0, pairs = 0, tooClose = 0, shortfall = 0;
+    const onTrackSamples = [];
+    for (const theme of ['forest', 'factory', 'park']) {
+      for (let seed = 1; seed <= 120; seed++) {
+        const rng = BI.makeRng(seed * 977 + 3);
+        const lvl = BI.levelgen.generate(rng, { mode: 'adventure', theme, spawns: spawns });
+        const w = makeWorld(lvl.map, [makePlayer('p1', 1, 1)]);
+        w.mode = 'adventure'; w.rng = rng;
+        const count = EN.countFor(6);            // 第 6 关规模：五只
+        if (EN.spawn(w, count, 6, rng) !== count) shortfall++;
+        const track = lvl.map.landmark.path;
+        const gapOf = (c, r) => track.reduce((m, cell) =>
+          Math.min(m, Math.abs(cell[0] - c) + Math.abs(cell[1] - r)), 99);
+        const cells = w.enemies.map(e => [G.col(e.x), G.row(e.y), gapOf(G.col(e.x), G.row(e.y))]);
+        cells.forEach(cell => {
+          total++;
+          if (cell[2] === 0) onTrack++;
+          if (cell[2] <= 1) nearTrack++;
+        });
+        for (let i = 0; i < cells.length; i++) {
+          let best = 1e9;
+          for (let j = 0; j < cells.length; j++) {
+            if (i !== j) best = Math.min(best, Math.abs(cells[i][0] - cells[j][0]) + Math.abs(cells[i][1] - cells[j][1]));
+          }
+          nearest += best;
+          for (let j = i + 1; j < cells.length; j++) {
+            pairs++;
+            if (Math.abs(cells[i][0] - cells[j][0]) + Math.abs(cells[i][1] - cells[j][1]) <= 2) tooClose++;
+          }
+        }
+      }
+    }
+    if (onTrack) onTrackSamples.push(theme + ' ' + onTrack + ' 只');
+    ok(shortfall === 0, '三种场景都能按数量撒满小怪', String(shortfall));
+    ok(onTrack / total <= .01, '几乎没有小怪直接出生在传送带 / 木马环道格子上',
+       (onTrack / total * 100).toFixed(1) + '%（' + (onTrackSamples.join('、') || '全部不在环路上') + '）');
+    ok(nearest / total >= 4, '出生点彼此拉开（平均最近邻至少 4 格）', (nearest / total).toFixed(2) + ' 格');
+    ok(tooClose / pairs < .03, '几乎没有出生点挤在一起（间距 ≤2 格的比例低于 3%）',
+       (tooClose / pairs * 100).toFixed(1) + '%');
+    ok(nearTrack / total < .45, '紧贴环路的出生点大幅减少（旧实现约 95%）',
+       (nearTrack / total * 100).toFixed(1) + '%');
+  }
 }
 
 /* ============================================================

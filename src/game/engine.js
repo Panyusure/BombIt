@@ -14,7 +14,7 @@
       x: 0, y: 0, px: 0, py: 0,
       facing: 1, facingDir: 'down', moving: false, axisPref: 'x',
       power: CFG.START_POWER, maxBombs: CFG.START_BOMBS, bombsOut: 0,
-      speedBonus: 0, shield: 0, starTime: 0, kick: false, glove: false, invuln: 0, squash: 0,
+      speedBonus: 0, shield: 0, starTime: 0, glove: false, invuln: 0, squash: 0,
       alive: true, deadAt: 0, lives: CFG.START_LIVES,
       skillCd: 0, soulEvolved: false, soulBombs: 0, picked: {}, motion: null
     };
@@ -76,7 +76,6 @@
       enemies: [],                           // 闯关模式的怪
       danger: null,                          // 威胁图（AI 用，每帧重算）
       burnItems: CFG.BURN_ITEMS,             // 爆炸会烧掉地上的道具（经典规则）
-      itemPool: 'core',                      // 常规五种道具；'full' 时额外加入踢弹
       stats: { explosions: 0, kills: 0, maxChain: 0 },
       match: null,
 
@@ -159,7 +158,6 @@
       p.maxBombs = CFG.START_BOMBS;
       p.speedBonus = 0;
       p.shield = 0;
-      p.kick = false;
       p.glove = false;
       p.picked = {};
       p.skillCd = 0;
@@ -234,7 +232,7 @@
       emit(w, 'bomb_action', [], { player: p.id, success: placed,
         reason: placed ? null : w.bombs.filter(function (b) { return b.ownerId === p.id; }).length >= p.maxBombs ? 'bomb_limit' : 'occupied' });
     }
-    if (p.kick || p.glove) MO.kickCheck(w, p, hx, hy);
+    if (p.glove) MO.pushCheck(w, p, hx, hy);
     if ((hx || hy) && Math.hypot(p.x - x, p.y - y) < 1e-8 && !a.quietBlocked) {
       emit(w, 'blocked', [], { player: p.id });
     }

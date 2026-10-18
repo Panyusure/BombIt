@@ -169,7 +169,7 @@
 
       m.remaining -= dt;
 
-      // 超时加速：软砖全清 + 引信缩短，逼出胜负
+      // 超时加速：软砖全清，逼出正面交手（引信保持 2.4 秒不变）
       if (m.remaining <= 0 && !m.sudden) {
         m.sudden = true;
         m.remaining = CFG.VERSUS_SUDDEN_TIME;

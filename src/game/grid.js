@@ -81,15 +81,21 @@
       return true;
     },
 
-    // A monster may leave its own newly placed bomb, but cannot move back
-    // toward it or re-enter it after clearing the blast-body collision radius.
+    // A monster may leave a bomb it is already overlapping, but cannot move
+    // toward it or enter it from outside.
+    //
+    // 「已经重叠」不限于它自己放的炸弹：玩家可以在怪物身上直接放弹
+    // （tryPlaceBomb 只检查炸弹，不检查角色），传送带也可能把炸弹送到它脚下。
+    // 只认 ownerId 的话，怪物会被这颗弹永久钉死在原地 —— 任何方向的新位置
+    // 都还在 32 像素碰撞圈里，连随带移动都被判成「撞弹」。
+    // 判定与 moveBomb 的「已重叠可以向外离开」保持一致，两边对称。
     canMoveEnemy: function (world, e, x, y) {
       var radius = CFG.ENEMY_BOX / 2 + CFG.BOMB_RADIUS;
       var blockers = world.bombs.filter(function (b) {
         var pos = grid.bombPosition(b);
         var before = Math.hypot(e.x - pos.x, e.y - pos.y);
         var after = Math.hypot(x - pos.x, y - pos.y);
-        return !(b.ownerId === e.id && before < radius && after > before + 1e-9);
+        return !(before < radius && after > before + 1e-9);
       });
       return grid.canStand(world.map, blockers, x, y, CFG.ENEMY_BOX, e.id);
     },

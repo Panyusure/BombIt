@@ -508,7 +508,8 @@ window.addEventListener('load', async function () {
     ok(D.world.map.bossBattle && MUS.id === 'boss', '第 5 关播放鲁鲁旦别捣蛋 1', MUS.id);
     ok(MUS.el.src.indexOf('boss-1.mp3') > 0, 'BOSS 曲使用新的 AI 音乐', MUS.el.src);
     for (var fade = 0; fade < 8; fade++) MUS.update(.25);
-    ok(MUS.el.volume > 0 && MUS.el.volume <= .08, 'BOSS 曲淡入完成后仍保持低音量', String(MUS.el.volume));
+    ok(MUS.el.volume > 0 && Math.abs(MUS.el.volume - MUS.tracks.boss.volume) < .001,
+       'BOSS 曲淡入完成后到达自身音量（接近普通关，不再被压到听不见）', String(MUS.el.volume));
     var bossElement = MUS.el;
     D.tick(.1);
     ok(MUS.el === bossElement, '同一场 BOSS 战不会每帧换曲或重建播放器');
@@ -533,7 +534,8 @@ window.addEventListener('load', async function () {
     ok(MUS.id === 'boss2' && MUS.el.src.indexOf('boss-2.mp3') > 0,
        '第 10 关播放鲁鲁旦别捣蛋 2', MUS.id);
     for (var fade2 = 0; fade2 < 8; fade2++) MUS.update(.25);
-    ok(MUS.el.volume > 0 && MUS.el.volume <= .08, '第二首人声曲同样保持低音量', String(MUS.el.volume));
+    ok(MUS.el.volume > 0 && Math.abs(MUS.el.volume - MUS.tracks.boss2.volume) < .001,
+       '第二首 BOSS 曲同样到达自身音量，不再被压低', String(MUS.el.volume));
     ok(MUS._els.menu && MUS._els.level && MUS._els.level2 && MUS._els.boss && MUS._els.boss2,
        '五首配乐各复用一个音频元素');
 
@@ -654,8 +656,11 @@ window.addEventListener('load', async function () {
     ok(D.world.burnItems === CFG.BURN_ITEMS,
        '真实对局的 world.burnItems 跟配置一致（重复键会让它悄悄变回 false）',
        'world=' + D.world.burnItems + ' 配置=' + CFG.BURN_ITEMS);
-    ok(D.world.itemPool === 'core' || typeof D.world.itemPool === 'string',
-       '真实对局设置了道具池', String(D.world.itemPool));
+    // 掉落池现在是 rules.itemPool() 的固定列表，不再挂在 world 上，
+    // 所以这里直接核对内容：六种道具，且早已被手套取代的踢弹不在其中。
+    ok(BI.rules.itemPool().length === 6 && BI.rules.itemPool().indexOf('glove') >= 0 &&
+       BI.rules.itemPool().indexOf('kick') < 0,
+       '真实对局的掉落池固定为六种道具，踢弹已移除', BI.rules.itemPool().join('/'));
     ok(typeof D.world.showDanger === 'undefined', '已移除通用威胁图开关');
 
     // 端到端：真局里放颗炸弹，把它旁边的道具炸掉
@@ -898,7 +903,7 @@ window.addEventListener('load', async function () {
     var iconCtx = document.getElementById('game').getContext('2d');
     var iconTextCalls = 0, originalText = iconCtx.fillText;
     iconCtx.fillText = function () { iconTextCalls++; };
-    BI.sprites.drawItems(iconCtx, ['fire', 'bomb', 'speed', 'star', 'shield', 'kick', 'glove'].map(function (type, i) {
+    BI.sprites.drawItems(iconCtx, ['fire', 'bomb', 'speed', 'star', 'shield', 'glove'].map(function (type, i) {
       return { type: type, c: i + 1, r: 2, born: 0 };
     }), 1);
     iconCtx.fillText = originalText;

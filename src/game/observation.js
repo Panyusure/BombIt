@@ -9,7 +9,7 @@
     return out;
   }
   var common = ['id', 'alive', 'x', 'y', 'facingDir', 'facing', 'power', 'maxBombs', 'speedBonus',
-    'shield', 'starTime', 'invuln', 'kick', 'glove', 'soulSlowTime', 'soulSlowRate'];
+    'shield', 'starTime', 'invuln', 'glove', 'soulSlowTime', 'soulSlowRate'];
   function actor(p) {
     var out = pick(p, common);
     out.col = G.col(p.x); out.row = G.row(p.y);

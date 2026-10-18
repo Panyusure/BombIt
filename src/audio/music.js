@@ -3,9 +3,11 @@
  *
  *   菜单     → 开始菜单
  *   普通关   → 小怪关 1 / 2（按关卡交替；拆砖用 1，对战用 2）
- *   BOSS 战  → 鲁鲁旦别捣蛋 1 / 2（第 5 / 10 关，人声低音量）
+ *   BOSS 战  → 鲁鲁旦别捣蛋 1 / 2（第 5 / 10 关，音量略低于普通关）
  *
  * 音效依旧是程序化合成（见 sfx.js），配乐音量保持在音效之下。
+ * BOSS 曲（鲁鲁旦别捣蛋）曾经为了「人声不吵」压到普通关的四分之一，
+ * 结果小到几乎听不见；现在只比普通关低一成多，听得清也不抢音效。
  *
  * 为什么用 HTMLAudioElement 而不是 Web Audio：
  *   曲子是几 MB 的文件，Audio 元素能边下边播、缓存和并发都交给浏览器，
@@ -29,8 +31,8 @@
     menu:   { file: 'assets/audio/menu.mp3', title: '开始菜单', volume: .20 },
     level:  { file: 'assets/audio/level-1.mp3', title: '小怪关 1', volume: .22 },
     level2: { file: 'assets/audio/level-2.mp3', title: '小怪关 2', volume: .22 },
-    boss:   { file: 'assets/audio/boss-1.mp3', title: '鲁鲁旦别捣蛋 1', volume: .065 },
-    boss2:  { file: 'assets/audio/boss-2.mp3', title: '鲁鲁旦别捣蛋 2', volume: .06 }
+    boss:   { file: 'assets/audio/boss-1.mp3', title: '鲁鲁旦别捣蛋 1', volume: .18 },
+    boss2:  { file: 'assets/audio/boss-2.mp3', title: '鲁鲁旦别捣蛋 2', volume: .18 }
   };
 
   var FADE_IN = 1.4;    // 秒：新曲淡入

@@ -46,7 +46,7 @@
         }).map(function (o) { return o.id; }),
         freeFor: p.id,        // 主人可以踩着自己刚放的炸弹走出去
         color: p.color,
-        slide: null           // 踢弹滑行状态
+        slide: null           // 推弹滑行状态
       });
       p.bombsOut = mine + 1;
       p.squash = 1;           // 放弹时身体下压（动效）
@@ -132,7 +132,7 @@
       return true;
     },
 
-    /** 踢弹滑行的目标格是否被挡住 */
+    /** 推弹滑行的目标格是否被挡住 */
     bombBlockedAt: function (world, self, c, r) {
       if (!G.inBounds(c, r, world.map)) return true;
       if (G.isWall(world.map, c, r)) return true;
@@ -243,7 +243,7 @@
 
     maybeDropItem: function (world, c, r) {
       if (!world.rng.chance(CFG.ITEM_DROP_RATE)) return;
-      var pool = rules.itemPool(world);
+      var pool = rules.itemPool();
       world.items.push({
         c: c, r: r,
         type: world.rng.pick(pool),
@@ -298,16 +298,14 @@
       }
       else if (type === 'shield') p.shield = 1;
       else if (type === 'star') p.starTime = CFG.STAR_TIME;
-      else if (type === 'kick') p.kick = true;
       else if (type === 'glove') p.glove = true;
       if (!p.picked) p.picked = {};
       p.picked[type] = (p.picked[type] || 0) + 1;
     },
 
-    itemPool: function (world) {
-      var pool = ['fire', 'bomb', 'speed', 'star', 'shield', 'glove'];
-      if (world.itemPool === 'full') pool.push('kick');
-      return pool;
+    /** 砖块与敌人共用的掉落池（推弹手套已取代早期踢弹） */
+    itemPool: function () {
+      return ['fire', 'bomb', 'speed', 'star', 'shield', 'glove'];
     },
 
     /* ---------------- 火焰与伤害 ---------------- */
@@ -446,7 +444,7 @@
      */
     dropFromEnemy: function (world, e) {
       if (!world.rng.chance(CFG.ENEMY_DROP_RATE)) return null;
-      var pool = rules.itemPool(world);
+      var pool = rules.itemPool();
       var it = {
         c: G.col(e.x), r: G.row(e.y),
         type: world.rng.pick(pool), born: world.time

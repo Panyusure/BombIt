@@ -97,7 +97,7 @@ node cli/bombit.cjs act --session $duel.session --actions '{"p1":{"move":"right"
 
 ## JSON 协议
 
-成功响应具有 `ok: true`、`session`、`revision`、`state`。动作额外返回 `advancedFrames`、`stopReason`、`events`。协议版本为 `state.protocol: "bombit/1"`。
+带状态的调用（`new`、`state`、`act`、`batch`、`path`、`goTo`、`replay`）成功响应具有 `ok: true`、`session`、`revision`、`state`；`rules` 只返回 `ok` 与 `rules`，`export` 返回 `ok`、`session` 与 `replay`，都没有 `revision` / `state`。动作额外返回 `advancedFrames`、`stopReason`、`events`。协议版本为 `state.protocol: "bombit/1"`。
 
 | 字段 | 含义 |
 |---|---|

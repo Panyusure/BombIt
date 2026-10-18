@@ -146,7 +146,7 @@
 
       // 玩家可能在它移动途中封住下一格；回退到原来的格心重新规划。
       if (!e.returning && G.bombBlocks(world.bombs, e.tc, e.tr, null)) {
-        if (e.glove || e.kick) BI.motion.kickCheck(world, e, e.dir.x, e.dir.y);
+        if (e.glove) BI.motion.pushCheck(world, e, e.dir.x, e.dir.y);
         e.tc = e.fromC == null ? G.col(e.x) : e.fromC;
         e.tr = e.fromR == null ? G.row(e.y) : e.fromR;
         e.returning = true;
@@ -371,7 +371,7 @@
       var best = null, length = 6;
       world.items.forEach(function (it) {
         if (Math.abs(it.c-c)+Math.abs(it.r-r) > 5) return;
-        if ((it.type === 'glove' && e.glove) || (it.type === 'kick' && e.kick) ||
+        if ((it.type === 'glove' && e.glove) ||
             ((it.type === 'shield' || it.type === 'fruit') && e.shield) ||
             (it.type === 'star' && e.starTime > 1) || (it.type === 'speed' && e.speedBonus >= CFG.SPEED_MAX_BONUS) ||
             (it.type === 'fire' && e.power >= CFG.MAX_POWER) || (it.type === 'bomb' && e.maxBombs >= 3)) return;
