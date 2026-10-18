@@ -26,8 +26,11 @@ output = folder / ('BombIt-' + args.version + '.zip')
 assert args.replace or not output.exists(), 'Release package already exists; use --replace to rebuild it'
 prefix = 'BombIt-' + args.version + '/'
 expected = {}
+# 离线包是拿来玩的：Motion 成片与配乐（>100MB）留在仓库和在线页，不进包。
+SKIP_PREFIXES = ('motion/out/',)
 with tarfile.open(fileobj=io.BytesIO(archive)) as source:
-    files = {m.name: source.extractfile(m).read() for m in source if m.isfile()}
+    files = {m.name: source.extractfile(m).read() for m in source
+             if m.isfile() and not m.name.startswith(SKIP_PREFIXES)}
 assert json.loads(files['package.json'])['version'].startswith(args.version[1:] + '.'), 'package version mismatch'
 assert ("VERSION: '" + args.version + "'").encode() in files['src/core/config.js'], 'menu version mismatch'
 for required in ['index.html', 'replay.html', 'AGENTS.md', 'cli/bombit.cjs', 'cli/navigation.cjs',
