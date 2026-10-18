@@ -18,6 +18,7 @@
   var ctx = canvas.getContext('2d');
   var bootEl = document.getElementById('boot');
   var booting = !!bootEl;
+  var bootPhase = 'menu', bootFinishing = false, pendingGame = null;
   var replayURL = new URL('../replay.html?embedded=1', document.currentScript.src).href;
   canvas.tabIndex = -1;
 
@@ -338,8 +339,8 @@
    * 每帧推进
    * ============================================================ */
   function update(dt) {
-    if (MUSIC) { MUSIC.update(dt); syncMusic(); }
     if (booting) return;
+    if (MUSIC) { MUSIC.update(dt); syncMusic(); }
     if (app.replayOpen) return;
     if (app.runtimeFault) {
       var recovery = BI.pause.update(app.pause, dt);
@@ -408,7 +409,8 @@
       fpsAcc += dtReal; fpsCount++;
       if (fpsAcc >= 0.5) { fps = fpsCount / fpsAcc; fpsAcc = 0; fpsCount = 0; }
 
-      render(acc / STEP);
+      // 加载遮罩覆盖整屏时不重复绘制底下的菜单，把主线程留给图片准备。
+      if (!booting) render(acc / STEP);
     } catch (err) {
       var w = app.world;
       app.runtimeFault = {
@@ -473,6 +475,14 @@
   }
 
   function startGame(cfg) {
+    if (bootEl && BI.assets.loading.done < BI.assets.loading.total) {
+      if (booting) return;
+      pendingGame = cfg; bootPhase = 'game'; booting = true;
+      document.body.appendChild(bootEl);
+      BI.assets.loadBackground();
+      updateLoading();
+      return;
+    }
     app.runtimeFault = null;
     app.config = cfg;
     app.world = createWorld(cfg);
@@ -497,6 +507,28 @@
     app.endAt = 0;
     FX.reset();
     BI.input.clear();
+  }
+
+  function updateLoading() {
+    if (!booting) return;
+    var progress = bootPhase === 'menu' ? BI.assets.menuLoading : BI.assets.loading;
+    if (window.BombItBoot) window.BombItBoot.resources(progress.done, progress.total, bootPhase);
+    if (progress.done !== progress.total || !progress.total || bootFinishing) return;
+    bootFinishing = true;
+    // 保留完整的一帧 100% 进度；先绘制完整菜单，再启动后台请求。
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      booting = false; bootFinishing = false; acc = 0;
+      if (bootEl.parentNode) bootEl.parentNode.removeChild(bootEl);
+      BI.input.clear(); BI.input.endMouseFrame();
+      if (pendingGame) {
+        var cfg = pendingGame; pendingGame = null;
+        startGame(cfg);
+      }
+      render(0);
+      if (window.performance && performance.mark) performance.mark('bombit-' + bootPhase + '-ready');
+      BI.assets.loadBackground();
+      if (MUSIC) syncMusic();
+    }); });
   }
 
   function boot() {
@@ -524,26 +556,16 @@
     window.addEventListener('mousedown', unlockAudio);
     window.addEventListener('touchstart', unlockAudio);
 
-    BI.assets.onProgress = function (done, total) {
-      if (window.BombItBoot) window.BombItBoot.resources(done, total);
-      if (booting && done === total && total > 0) {
-        // 让浏览器先画出 100%，下一帧显示已经准备好的菜单。
-        requestAnimationFrame(function () { requestAnimationFrame(function () {
-          booting = false;
-          if (bootEl && bootEl.parentNode) bootEl.parentNode.removeChild(bootEl);
-          BI.input.clear(); BI.input.endMouseFrame();
-        }); });
-      }
-    };
-    BI.assets.init();
-    // 壁纸只装饰开始界面，异步加载；没到位（或文件缺失）时菜单用渐变背景顶上
+    BI.assets.onProgress = updateLoading;
+    BI.assets.init({ menuFirst: booting });
+    // 壁纸属于菜单必需资源；文件缺失时结清进度并回退渐变背景。
     BI.assets.loadWallpaper(CFG.VIEW_W, CFG.VIEW_H, window.devicePixelRatio || 1);
-    BI.assets.onProgress(BI.assets.loading.done, BI.assets.loading.total);
+    updateLoading();
     app.menu = BI.menu.create();
-    // 先同步画出可操作菜单，不等图片解码和第一个动画回调。
-    render(0);
-    if (window.performance && performance.mark) performance.mark('bombit-menu-ready');
-    if (MUSIC) syncMusic();     // 先定下菜单曲，用户一交互就能立刻响
+    if (!booting) {
+      render(0);
+      if (MUSIC) syncMusic();
+    }
 
     requestAnimationFrame(frame);
 

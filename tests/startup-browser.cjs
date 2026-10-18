@@ -3,12 +3,15 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const {pathToFileURL} = require('node:url');
 const {spawn} = require('node:child_process');
 const assert = require('node:assert/strict');
 const storage = require('../cli/storage.cjs');
 const root = path.resolve(__dirname,'..'), scratch = storage.scratch('startup');
 const capture = process.argv.includes('--capture');
 const failAsset = process.argv.includes('--fail-asset'), failScript = process.argv.includes('--fail-script');
+const failBackground = process.argv.includes('--fail-background');
+const slowBackground = process.argv.includes('--slow-background'), localFile = process.argv.includes('--file');
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 let child, socket, server;
 const pending = new Map(); let sequence = 0;
@@ -31,14 +34,20 @@ async function until(expression,timeout=30000) {
 }
 async function main() {
   let bytes = 0; const requests = [];
+  let releaseBackground;
+  const backgroundGate = new Promise(resolve => { releaseBackground = resolve; });
+  const isBackground = pathname => /\/assets\/enemies\//.test(pathname) || /(?:-back|-awakened).*\.png$/.test(pathname);
   server = http.createServer((req,res) => {
     const pathname = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-    if ((failAsset && pathname === '/assets/characters/axiu-hd.png') || (failScript && pathname === '/src/core/config.js')) {res.writeHead(404).end();return;}
+    if ((failAsset && pathname === '/assets/characters/axiu-hd.png') ||
+        (failBackground && pathname === '/assets/characters/xiaonuo-back-hd.png') ||
+        (failScript && pathname === '/src/core/config.js')) {res.writeHead(404).end();return;}
     const file = path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
     if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404).end();return;}
     const data = fs.readFileSync(file); bytes+=data.length; requests.push(pathname);
     const type = {'.js':'application/javascript','.html':'text/html','.css':'text/css','.png':'image/png','.mp3':'audio/mpeg'}[path.extname(file)]||'application/octet-stream';
-    res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});res.end(data);
+    const respond = () => {res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});res.end(data);};
+    if(slowBackground && isBackground(pathname)) backgroundGate.then(respond); else respond();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base = 'http://127.0.0.1:'+server.address().port;
@@ -68,7 +77,7 @@ async function main() {
       }
       requestAnimationFrame(poll);
     });`});
-  await send('Page.navigate',{url:base+'/'});
+  await send('Page.navigate',{url:localFile ? pathToFileURL(path.join(root,'index.html')).href : base+'/'});
   if (failScript) {
     await until('document.getElementById("boot-retry")?.hidden === false');
     assert.equal(await evaluate('!!document.getElementById("boot")'),true);
@@ -79,18 +88,48 @@ async function main() {
     const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(scratch,'loading.png'),Buffer.from(shot.data,'base64'));
   }
   await until('window.__startup?.menuReadyMs');
-  const stats=await evaluate('({...__startup,version:BI.config.VERSION,assets:BI.assets.status(),loading:BI.assets.loading})');
+  const stats=await evaluate('({...__startup,version:BI.config.VERSION,assets:BI.assets.status(),loading:BI.assets.menuLoading})');
   assert.ok(stats.loadingSeen && stats.samples.some(n=>n>0&&n<100));
   assert.ok(stats.samples.every((n,i)=>i===0||n>=stats.samples[i-1]),'Progress must be monotonic');
   assert.ok(stats.samples.includes(100),'Display 100% before entering menu');
   assert.equal(stats.loading.done,stats.loading.total);
+  assert.equal(stats.loading.total,7,'Menu only waits for six full-quality characters and wallpaper');
   if (failAsset) {
     assert.ok(await evaluate('BI.assets.failures.length > 0 && !BI.assets.ready("axiu")'));
     console.log('PASS missing image finishes progress and uses existing placeholder fallback');return;
   }
+  assert.ok(stats.visualReadyMs <= stats.menuReadyMs,'Full-quality menu artwork must be ready before revealing the menu');
   const {samples,...timings}=stats;
   console.log(JSON.stringify({...timings,requestedBytes:bytes,requests:requests.length,progress:'verified'}));
   if(capture){const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(scratch,'menu.png'),Buffer.from(shot.data,'base64'));}
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  if(slowBackground) {
+    await until('!!document.getElementById("boot")');
+    assert.equal(await evaluate('BI.debug.world'),null,'Do not start a partially loaded game');
+    assert.equal(await evaluate('BI.debug.app.errors.length'),0);
+  }
+  releaseBackground();
+  await until('BI.debug.scene === "playing" && !document.getElementById("boot")');
+  assert.equal(await evaluate('BI.assets.loading.done === BI.assets.loading.total'),true);
+  if (!localFile) {
+    const requestTimings = await evaluate(`performance.getEntriesByType('resource').map(e=>({name:new URL(e.name).pathname,start:e.startTime}))`);
+    const backgroundTimings = requestTimings.filter(e=>isBackground(e.name));
+    const menuReady = await evaluate('performance.getEntriesByName("bombit-menu-ready")[0].startTime');
+    assert.equal(backgroundTimings.length,13,'All remaining artwork must load exactly once');
+    assert.ok(backgroundTimings.every(e=>e.start >= menuReady),'Gameplay downloads must not compete with menu images');
+    assert.equal(requests.filter(p=>p==='/assets/ui/menu-wallpaper.png').length,1,'Wallpaper preload must be reused');
+  }
+  if(failBackground) {
+    assert.equal(await evaluate('!!BI.assets.ready("xiaonuo-back")'),false);
+    assert.equal(await evaluate('BI.assets.failures.length'),1);
+  } else {
+    assert.equal(await evaluate('BI.assets.order.every(id=>BI.assets.ready(id)?.sprite) && Object.keys(BI.ENEMY_ART).every(id=>BI.assets.readyEnemy(id))'),true);
+  }
+  await evaluate('BI.debug.gotoMenu()');
+  console.log('PASS immediate start waits for gameplay artwork, all assets settle, return to menu');
+  // file:// 的 iframe 是独立不透明源；回放内部 API 的集成断言只在 HTTP 下执行。
+  if(localFile) return;
   const point=await evaluate(`(()=>{const r=document.querySelector('canvas').getBoundingClientRect(),b=BI.menu.REPLAY_BUTTON;return{x:r.left+(b.x+b.w/2)/720*r.width,y:r.top+(b.y+b.h/2)/696*r.height};})()`);
   await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});
   await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point});

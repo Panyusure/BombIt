@@ -1,6 +1,6 @@
 {
   "name": "bombit-cli",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "BombIt shared browser/CLI game engine with a deterministic agent protocol",
   "engines": { "node": ">=18" },

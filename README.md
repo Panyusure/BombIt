@@ -1,6 +1,6 @@
 # Q版泡泡堂 · BombIt
 
-![version](https://img.shields.io/badge/version-v2.1-5ec8f0)
+![version](https://img.shields.io/badge/version-v2.2-5ec8f0)
 
 一个用 **HTML5 Canvas + 原生 JavaScript** 写的 Q 版炸弹人对战小游戏：单人闯关打怪、单人计时拆砖、双人同屏对战，共六位精灵角色、十关冒险、三张主题地图。
 
@@ -8,17 +8,19 @@
 
 作者：**初霁**
 
+**v2.2 · 菜单优先加载**：启动只等待菜单所需的原始高清素材，其余对局素材在菜单内后台准备；加载遮罩期间不再重复绘制。立即开局时若尚未就绪，会显示剩余进度。详见 [v2.2 更新说明](docs/releases/v2.2.md)。
+
 **v2.1 · 未来 PvP 充能**：对战击倒对手同样充满通灵条，通灵进度跨回合保留；固定策略示例 Agent 已移除，改由每个 Agent 的模型通过 CLI 自行决策。详见 [v2.1 更新说明](docs/releases/v2.1.md)。
 
 **v2.0 · Agent 接入泡泡堂**：通过 CLI / JSONL 观察局面、提交动作、自动游玩；支持内存模式、批量动作与格子寻路。人类可从开始菜单右上角的「对局回放」观看 Agent 对局。详见 [v2.0 更新说明](docs/releases/v2.0.md) 与 [Agent 接入手册](docs/CLI与Agent.md)。
 
-启动时显示真实加载进度，原始高清素材准备完成后进入菜单。
+启动时显示真实加载进度，优先准备菜单所需的原始高清素材，其余对局素材在菜单内后台加载。立即开局时若尚未就绪，会显示剩余加载进度；所有素材保持原画质。
 
 > **使用范围**：本项目仅供个人学习与娱乐使用，请勿商用盈利。角色与敌人等第三方素材的权利归原权利人所有。
 
 > **在线游玩**：[GitHub Pages](https://panyusure.github.io/BombIt/)
 >
-> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v2.1.zip`，解压后双击里面的 `启动游戏.bat` 即可。
+> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v2.2.zip`，解压后双击里面的 `启动游戏.bat` 即可。
 > 也可以直接 `git clone` 本仓库，双击 `index.html` —— 两种方式都不需要安装任何东西。
 
 ![开始界面](docs/screenshot-menu.png)

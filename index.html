@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Q版泡泡堂 · BombIt</title>
+<link rel="preload" as="image" href="assets/ui/menu-wallpaper.png">
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%; overflow: hidden;
@@ -45,7 +46,7 @@
   <div id="stage"><canvas id="game"></canvas></div>
   <div id="boot" role="status" aria-live="polite">
     <div class="boot-card">
-      <div class="boot-mark" aria-hidden="true"></div><div class="boot-label">BOMBIT · v2.1</div>
+      <div class="boot-mark" aria-hidden="true"></div><div class="boot-label">BOMBIT · v2.2</div>
       <h1>泡泡准备中</h1><p id="boot-status">正在加载游戏代码…</p>
       <progress id="boot-progress" value="0" max="100" aria-label="游戏加载进度"></progress>
       <div class="boot-count"><span id="boot-detail">准备开始</span><span id="boot-percent">0%</span></div>
@@ -54,18 +55,20 @@
   </div>
   <script>
     (function () {
-      var scripts = 0, scriptTotal = 26, resources = 0, resourceTotal = 20;
+      var scripts = 0, scriptTotal = 26, resources = 0, resourceTotal = 7, phase = 'menu';
       function show(detail) {
         var bar = document.getElementById('boot-progress'); if (!bar) return;
-        var percent = Math.round((scripts + resources) / (scriptTotal + resourceTotal) * 100);
+        var percent = phase === 'game' ? Math.round(resources / resourceTotal * 100) :
+          Math.round((scripts + resources) / (scriptTotal + resourceTotal) * 100);
         bar.value = percent;
         document.getElementById('boot-percent').textContent = percent + '%';
         document.getElementById('boot-detail').textContent = detail;
       }
-      window.BombItBoot = { resources: function (done, total) {
+      window.BombItBoot = { resources: function (done, total, nextPhase) {
         if (!document.getElementById('boot')) return;
-        resources = done; resourceTotal = total;
-        document.getElementById('boot-status').textContent = done === total ? '准备就绪' : '正在准备角色与场景…';
+        resources = done; resourceTotal = total; phase = nextPhase || 'menu';
+        document.getElementById('boot-status').textContent = done === total ? '准备就绪' :
+          (phase === 'game' ? '正在准备对局画面…' : '正在准备角色与场景…');
         show(done + ' / ' + total + ' 项画面资源');
       } };
       document.addEventListener('load', function (event) {

@@ -3,7 +3,7 @@
  *
  * 设计原则：**素材加载失败绝不能影响游戏运行**。
  *   · 图片没加载好 / 路径写错 / 文件缺失 -> 自动回退几何占位小人
- *   · 加载是异步的，游戏立刻就能开始，图片到了再无缝换上
+ *   · 入口可优先准备菜单，对局图片随后后台加载；回放等入口默认全部加载
  * ============================================================ */
 (function (BI) {
   'use strict';
@@ -35,15 +35,28 @@
     done: 0,
     failures: [],
     loading: { done: 0, total: 0 },
+    menuLoading: { done: 0, total: 0 },
+    menuKeys: {},
+    background: [],
+    initialized: false,
     settled: {},
     onProgress: null,
     wallpaper: { ok: false, canvas: null, img: null, file: WALLPAPER.file },
 
-    /** 读取配置并把所有图片挂上加载回调 */
-    init: function () {
-      if (this.order.length) return;
-      this.loading.total += Object.keys(ENEMY_ART).length + Object.keys(BI.CHARACTERS?.characters || {}).length;
+    /** 注册全部素材；menuFirst 将菜单用不到的请求留到 loadBackground。 */
+    init: function (options) {
+      if (this.initialized) return;
+      this.initialized = true;
+      var menuFirst = options && options.menuFirst;
+      var selectable = (BI.CHARACTERS && BI.CHARACTERS.selectable) || [];
       var owner = this;
+      selectable.forEach(function (id) {
+        if (BI.CHARACTERS.characters[id]) {
+          owner.menuKeys['character:' + id] = true;
+          owner.menuLoading.total++;
+        }
+      });
+      this.loading.total += Object.keys(ENEMY_ART).length + Object.keys(BI.CHARACTERS?.characters || {}).length;
       Object.keys(ENEMY_ART).forEach(function (id) {
         var def = ENEMY_ART[id], art = { img: new Image(), crop: def.crop, ok: false };
         art.img.onload = function () {
@@ -51,7 +64,8 @@
           owner.settle('enemy:' + id);
         };
         art.img.onerror = function () { owner.settle('enemy:' + id); };
-        art.img.src = ART_BASE + def.file;
+        var load = function () { art.img.src = ART_BASE + def.file; };
+        if (menuFirst) owner.background.push(load); else load();
         owner.enemySprites[id] = art;
       });
       this.enemyArt = this.enemySprites.boss;
@@ -105,11 +119,15 @@
           }
         };
 
-        try {
-          a.img.src = new URL(a.image, PROJECT_BASE).href;
-        } catch (e) {
-          a.img.onerror();
-        }
+        var load = function () {
+          try {
+            a.img.src = new URL(a.image, PROJECT_BASE).href;
+          } catch (e) {
+            a.img.onerror();
+          }
+        };
+        if (menuFirst && !self.menuKeys['character:' + id]) self.background.push(load);
+        else load();
 
         self.pool[id] = a;
         self.order.push(id);
@@ -120,7 +138,14 @@
     settle: function (key) {
       if (this.settled[key]) return;
       this.settled[key] = true; this.loading.done++;
+      if (this.menuKeys[key]) this.menuLoading.done++;
       if (this.onProgress) this.onProgress(this.loading.done, this.loading.total);
+    },
+
+    // 菜单绘制完成后再发出对局素材请求，避免争抢首屏带宽。
+    loadBackground: function () {
+      var jobs = this.background.splice(0);
+      jobs.forEach(function (load) { load(); });
     },
 
     readyEnemy: function (id) {
@@ -149,11 +174,15 @@
      * ============================================================ */
     loadWallpaper: function (viewW, viewH, dpr) {
       var wallpaper = this.wallpaper, img = new Image();
-      if (!wallpaper.img) this.loading.total++;
+      if (!wallpaper.img) {
+        this.loading.total++;
+        this.menuLoading.total++;
+        this.menuKeys.wallpaper = true;
+      }
       wallpaper.img = img;
 
       img.onload = function () {
-        if (!img.naturalWidth || !img.naturalHeight) return;
+        if (!img.naturalWidth || !img.naturalHeight) { img.onerror(); return; }
         var scale = Math.max(1, Math.min(WALLPAPER.maxScale, dpr || 1));
         var rect = assets.coverRect(img.naturalWidth, img.naturalHeight, viewW, viewH, WALLPAPER.focusX);
         var cv = document.createElement('canvas');

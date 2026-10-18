@@ -13,7 +13,7 @@ import zipfile
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--ref', default='HEAD')
-parser.add_argument('--version', default='v2.1')
+parser.add_argument('--version', default='v2.2')
 parser.add_argument('--replace', action='store_true', help='Atomically replace an existing verified package')
 args = parser.parse_args()
 assert re.fullmatch(r'v\d+\.\d+(?:\.\d+)?', args.version), 'Invalid release version'
