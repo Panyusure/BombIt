@@ -120,6 +120,17 @@
           var c = G.col(e.x), r = G.row(e.y);
           var passed = (G.centerX(e.tc) - e.x) * e.dir.x + (G.centerY(e.tr) - e.y) * e.dir.y < -.001;
           var outside = !((c === e.fromC && r === e.fromR) || (c === e.tc && r === e.tr));
+          // Sideways belt drift must not cancel an exit halfway across the
+          // belt. Move the waypoint to the new lane if that exit is open.
+          if (outside && !passed && !e.returning) {
+            var nextC = e.dir.x ? e.tc : c, nextR = e.dir.y ? e.tr : r;
+            var sameLane = e.dir.x ? (c === e.fromC || c === e.tc) : (r === e.fromR || r === e.tr);
+            if (sameLane && !G.isWall(world.map, nextC, nextR) && !G.bombBlocks(world.bombs, nextC, nextR, null)) {
+              if (e.dir.x) { e.fromR = r; e.tr = r; }
+              else { e.fromC = c; e.tc = c; }
+              outside = false;
+            }
+          }
           if (passed || outside) { e.dir = null; e.returning = false; }
         }
       }
@@ -181,8 +192,11 @@
 
     moveCarriedEnemy: function (world, e, tx, ty, distance, carried) {
       var moved = false;
-      // Align the cross-axis before continuing along the selected corridor.
-      var axes = e.dir.x ? ['y', 'x'] : ['x', 'y'];
+      // While riding, spend the walking budget on the chosen direction first.
+      // Otherwise lane alignment fights the belt every frame and leaves no
+      // movement to step onto the ground. Re-align after leaving the belt.
+      var axes = e.dir.x ? ['x', 'y'] : ['y', 'x'];
+      if (!carried) axes.reverse();
       for (var i = 0; i < axes.length && distance > 1e-9; i++) {
         var axis = axes[i], delta = (axis === 'x' ? tx : ty) - e[axis];
         var amount = Math.min(Math.abs(delta), distance);

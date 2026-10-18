@@ -943,7 +943,9 @@ window.addEventListener('load', async function () {
       '第二关介绍克劳德德');
     ok(introWorld.players[0].shield === 1, '未使用的护盾跨关保留');
     D.render(1);
-    click(360, 605); D.tick(1 / 60); unclick();
+    click(BI.hud.briefingStart.x + BI.hud.briefingStart.w / 2,
+          BI.hud.briefingStart.y + BI.hud.briefingStart.h / 2);
+    D.tick(1 / 60); unclick();
     ok(!introWorld.briefing, '鼠标按钮可以确认介绍');
     introWorld.enemies.length = 0;
     D.tick(CFG.LEVEL_CLEAR_DELAY + .2);
@@ -970,6 +972,25 @@ window.addEventListener('load', async function () {
     D.render(1);
     ok(D.world.players.every(function (p) { return p.starTime === 6 && p.shield === 1; }),
       '双人无敌和护盾状态可同时绘制');
+
+    group('新增：关前档案收紧版面、放大字号');
+    D.quickStart('adventure', 'BRIEFSIZE');
+    var briefSizes = {}, savedBriefText = BI.draw.text;
+    BI.draw.text = function (ctx, str, x, y, o) {
+      var m = o && o.font && /(\d+(?:\.\d+)?)px/.exec(o.font);
+      if (m && briefSizes[str] === undefined) briefSizes[str] = parseFloat(m[1]);
+      return savedBriefText.apply(this, arguments);
+    };
+    D.render(1);
+    BI.draw.text = savedBriefText;
+    ok(briefSizes[BI.entities.TYPES.gugu.story] >= 10,
+      '关前故事正文字号放大到 10px 以上', String(briefSizes[BI.entities.TYPES.gugu.story]));
+    ok(briefSizes['开始本关'] >= 19,
+      '开始本关按钮文字同步放大', String(briefSizes['开始本关']));
+    var briefBtn = BI.hud.briefingStart;
+    ok(briefBtn.x > 0 && briefBtn.y > 0 &&
+       briefBtn.x + briefBtn.w < CFG.VIEW_W && briefBtn.y + briefBtn.h < CFG.VIEW_H - 20,
+      '开始按钮命中区随档案一起收紧，不再贴着屏幕底部', JSON.stringify(briefBtn));
 
     group('新增：精灵技能与场景接线');
     Object.keys(BI.SKILLS).forEach(function (id) {
@@ -1409,7 +1430,7 @@ window.addEventListener('load', async function () {
       ok(words.some(function(s){return s.indexOf(cdText[id])>=0;}),'菜单里 '+id+' 显示「'+cdText[id]+'」',
         words.filter(function(s){return s.indexOf('冷却')>=0;}).join(' | '));
     });
-    // 关卡上方的「第 N 关」不许闪：低怪量警告只闪下面那行小字
+    // 关卡上方的「第 N 关」和下方小字都不许闪：危险只用稳定颜色表达
     (function () {
       D.quickStart('adventure','NOBLINK');D.press('Enter');
       var w=D.world;
@@ -1426,16 +1447,23 @@ window.addEventListener('load', async function () {
     ok(labels.length===12&&new Set(labels).size===1,
       '只剩 1 只敌人时「第 N 关」始终同一个颜色，不再闪烁',labels.join(','));
     ok(labels[0]==='#ff7a6b','警告色仍然给到，只是不闪（稳定红色）',labels[0]);
-    ok(subs.length===12&&new Set(subs).size>1,
-      '剩敌警告改为闪下面那行「剩余敌人」，提示没有丢',subs.join(','));
+    ok(subs.length===12&&new Set(subs).size===1,
+      '「剩余敌人」同样不闪，警告提示只靠颜色',subs.join(','));
+    ok(subs[0]===BI.ui.C.orange,'剩敌警告用稳定橙色，不再靠闪烁提示',subs[0]);
     // 敌人数正常时连警告都不该有：主标题保持稳定白
     w.enemies=[BI.entities.create('gugu',10,9,1),BI.entities.create('gugu',11,9,1),BI.entities.create('gugu',12,9,1)];
-    labels=[];
-    BI.draw.text=function(ctx,text,x,y,opts){if(text===label)labels.push((opts||{}).fill);return savedText.apply(this,arguments);};
+    labels=[];subs=[];
+    BI.draw.text=function(ctx,text,x,y,opts){
+      if(text===label)labels.push((opts||{}).fill);
+      if(text==='剩余敌人 3')subs.push((opts||{}).fill);
+      return savedText.apply(this,arguments);
+    };
     for(var t2=0;t2<12;t2++)BI.hud.drawFloating(iconCtx,w,t2*.13);
     BI.draw.text=savedText;
     ok(labels.length===12&&new Set(labels).size===1&&labels[0]==='#ffffff',
       '还有 3 只敌人时主标题本来就是稳定白',labels.join(','));
+    ok(subs.length===12&&new Set(subs).size===1&&subs[0]==='rgba(20,16,25,.62)',
+      '还有 3 只敌人时「剩余敌人」是常规灰字',subs.join(','));
   })();
 
     group('无敌碰撞与破盾保护实战');

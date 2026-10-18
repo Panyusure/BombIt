@@ -1,12 +1,14 @@
 # Q版泡泡堂 · BombIt
 
-![version](https://img.shields.io/badge/version-v2.2-5ec8f0)
+![version](https://img.shields.io/badge/version-v2.3-5ec8f0)
 
 一个用 **HTML5 Canvas + 原生 JavaScript** 写的 Q 版炸弹人对战小游戏：单人闯关打怪、单人计时拆砖、双人同屏对战，共六位精灵角色、十关冒险、三张主题地图。
 
 **零安装、零依赖、零构建、零联网** —— 整个文件夹拷到任何电脑，双击就能玩。
 
 作者：**初霁**
+
+**v2.3 · 关前档案与状态牌可读性**：关前敌情档案收小留边、字号整体放大，立绘按脚底对齐标签条；悬浮状态牌取消闪烁，剩敌警告固定橙色加粗。详见 [v2.3 更新说明](docs/releases/v2.3.md)。
 
 **v2.2 · 菜单优先加载**：启动只等待菜单所需的原始高清素材，其余对局素材在菜单内后台准备；加载遮罩期间不再重复绘制。立即开局时若尚未就绪，会显示剩余进度。详见 [v2.2 更新说明](docs/releases/v2.2.md)。
 
@@ -20,7 +22,7 @@
 
 > **在线游玩**：[GitHub Pages](https://panyusure.github.io/BombIt/)
 >
-> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v2.2.zip`，解压后双击里面的 `启动游戏.bat` 即可。
+> **下载游玩**：到 [Releases](../../releases) 下载 `BombIt-v2.3.zip`，解压后双击里面的 `启动游戏.bat` 即可。
 > 也可以直接 `git clone` 本仓库，双击 `index.html` —— 两种方式都不需要安装任何东西。
 >
 > **动效短片**：[BOMBIT Motion ID · 1080p60](motion/out/BombIt_MotionID_1080p60.mp4) · [交互播放器](motion/index.html)

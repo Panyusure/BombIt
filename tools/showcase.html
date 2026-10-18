@@ -64,7 +64,8 @@
  *   msedge --headless=new --screenshot=out.png --virtual-time-budget=4000 ^
  *          "tools/showcase.html?scene=menu"
  *
- * 可用 scene： menu / menu-versus / dig / versus / result-win / result-lose
+ * 可用 scene： menu / menu-versus / dig / versus / result-win / result-lose /
+ *              briefing / briefing-boss
  *
  * 注意：headless 浏览器几乎不触发 rAF，所以必须用 BI.debug.tick()
  * 手动推进逻辑；光等着的话世界时间是 0，画面是静止的初始状态。
@@ -76,6 +77,16 @@ window.addEventListener('load', function () {
 
   var scene = (location.search.match(/scene=([\w-]+)/) || [])[1] || 'versus';
 
+  /* 加载页还在的时候 startGame 会被挂起，直接摆场景只会截到菜单。
+     等 boot 层退场（或超时）再执行场景脚本。 */
+  var bootTries = 0;
+  (function waitBoot() {
+    var bootEl = document.getElementById('boot');
+    if (bootEl && bootEl.parentNode && bootTries++ < 600) return setTimeout(waitBoot, 50);
+    runScene();
+  })();
+
+  function runScene() {
   try {
     var D = window.BI.debug, CFG = window.BI.config, BI = window.BI;
 
@@ -144,6 +155,20 @@ window.addEventListener('load', function () {
         })();
         BI.fx.reset();
         D.tick(0.7);
+        break;
+
+      case 'briefing':
+        // 关前敌情档案：第一关谷谷歌歌的初次登场海报（不按 Enter，保留档案）
+        D.quickStart('adventure', 'SHOWBRIEF');
+        D.tick(0.2);
+        break;
+
+      case 'briefing-boss':
+        // 关前敌情档案：文案最长的一页，用来检查换行与版面是否溢出
+        D.quickStart('adventure', 'SHOWBRIEF');
+        D.press('Enter');
+        D.startLevel(CFG.ADVENTURE_LEVELS);
+        D.tick(0.2);
         break;
 
       case 'pause':
@@ -227,6 +252,7 @@ window.addEventListener('load', function () {
       '  scene=' + D.scene + '  ' + BI.assets.status();
   } catch (e) {
     el.textContent = '演示场景出错: ' + (e && e.stack);
+  }
   }
 });
 </script>

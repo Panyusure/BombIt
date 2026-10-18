@@ -25,6 +25,12 @@
     return MODE_META[world.mode] || { no: '00', title: '对局', en: 'BATTLE', color: U.C.yellow, tag: 'PLAY' };
   }
 
+  // 关前档案的版面与开始按钮命中区：渲染、输入与测试共用同一套数字，
+  // 卡片收窄后字号反而放大，避免“小窗套小字”。
+  var BRIEF_CARD = { x: 56, y: 72, w: 608, h: 552 };
+  var BRIEF_HEADER = 74;
+  var BRIEF_BTN = { x: 230, y: 530, w: 260, h: 46 };
+
   function keyHint(world) {
     if (world.inputMode === 'versus') {
       return '1P：' + dirText(world, 'p1') + ' + Enter 放弹　　' +
@@ -71,6 +77,8 @@
   var hud = BI.hud = {
 
     mmss: mmss,
+
+    briefingStart: BRIEF_BTN,
 
     /* ============================================================
      * 顶部 HUD
@@ -324,7 +332,7 @@
         return;
       }
 
-      var label, sub = '', warn = false, blinkLabel = true, tag = 'TIME', color = U.C.cyan;
+      var label, sub = '', warn = false, tag = 'TIME', color = U.C.cyan;
       if (m.mode === 'dig') {
         label = mmss(m.remaining);
         warn = m.remaining <= 20 && !m.over;
@@ -333,7 +341,6 @@
       } else if (m.mode === 'adventure') {
         var left = BI.match.countEnemies(world);
         label = '第 ' + m.level + ' / ' + CFG.ADVENTURE_LEVELS + ' 关';
-        blinkLabel = false;
         if (m.levelClearAt > 0) { sub = '关卡完成 · 即将进入下一关'; warn = false; }
         else sub = '剩余敌人 ' + left;
         warn = (left > 0 && left <= 2);
@@ -379,10 +386,10 @@
         fill: labelColor, align: 'center', baseline: 'middle'
       });
       if (sub) {
-        var subColor = warn ? U.C.ink : 'rgba(20,16,25,.62)';
-        if (warn && !blinkLabel) subColor = Math.sin(time * 8) < 0 ? '#ff7a6b' : U.C.ink;
+        // 危险提示只换颜色，不做闪烁：小字一直亮着，读数才不费眼。
+        var subColor = warn ? U.C.orange : 'rgba(20,16,25,.62)';
         U.text(ctx, sub, CFG.FIELD_W / 2 + 8, y + 42, {
-          size: 8, weight: 500, family: U.F.cn, fill: subColor, align: 'center'
+          size: 8, weight: warn ? 700 : 500, family: U.F.cn, fill: subColor, align: 'center'
         });
       }
 
@@ -427,8 +434,9 @@
       var selected = BI.entities.TYPES[ids[0]];
       var theme = BI.THEMES[world.theme] || BI.THEMES.forest;
       var W = CFG.VIEW_W, H = CFG.VIEW_H;
-      var card = { x: 28, y: 22, w: 664, h: 652 };
-      var bx = 230, by = 582, bw = 260, bh = 52;
+      var card = BRIEF_CARD;
+      var btn = hud.briefingStart;
+      var bx = btn.x, by = btn.y, bw = btn.w, bh = btn.h;
 
       ctx.save();
       ctx.fillStyle = 'rgba(20,16,25,.84)';
@@ -445,31 +453,31 @@
       D.roundRect(ctx, card.x, card.y, card.w, card.h, 5);
       ctx.clip();
       ctx.fillStyle = U.C.ink;
-      ctx.fillRect(card.x, card.y, card.w, 86);
-      U.dots(ctx, card.x, card.y, card.w, 86, U.C.cream, .055, 13);
+      ctx.fillRect(card.x, card.y, card.w, BRIEF_HEADER);
+      U.dots(ctx, card.x, card.y, card.w, BRIEF_HEADER, U.C.cream, .055, 13);
       ctx.restore();
       U.text(ctx, 'STAGE ' + pad2(world.match.level) + ' / ' + CFG.ADVENTURE_LEVELS +
-        (world.match.level === CFG.ADVENTURE_LEVELS ? '  ·  FINAL' : ''), card.x + 24, card.y + 20, {
-        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.cyan
+        (world.match.level === CFG.ADVENTURE_LEVELS ? '  ·  FINAL' : ''), card.x + 22, card.y + 18, {
+        size: 7.6, weight: 700, family: U.F.mono, fill: U.C.cyan
       });
-      U.text(ctx, theme.name + (world.map.bossBattle ? ' · BOSS 战' : ''), card.x + 24, card.y + 48, {
-        size: 24, weight: 900, family: U.F.cn, fill: U.C.cream
+      U.text(ctx, theme.name + (world.map.bossBattle ? ' · BOSS 战' : ''), card.x + 22, card.y + 42, {
+        size: 26, weight: 900, family: U.F.cn, fill: U.C.cream
       });
-      U.text(ctx, theme.subtitle, card.x + 24, card.y + 69, {
-        size: 7.5, weight: 500, family: U.F.cn, fill: 'rgba(245,235,216,.6)'
+      U.text(ctx, theme.subtitle, card.x + 22, card.y + 61, {
+        size: 8.6, weight: 500, family: U.F.cn, fill: 'rgba(245,235,216,.6)'
       });
       U.tag(ctx, world.map.bossBattle ? 'BOSS' : (fresh ? 'NEW ENEMY' : 'REMINDER'),
-        card.x + card.w - 24, card.y + 30, {
-          size: 6.5, family: U.F.mono, fill: world.map.bossBattle ? U.C.hot : U.C.yellow,
-          fg: U.C.ink, padX: 7, h: 14, align: 'right', stroke: U.C.ink, lw: 1
+        card.x + card.w - 22, card.y + 24, {
+          size: 7.2, family: U.F.mono, fill: world.map.bossBattle ? U.C.hot : U.C.yellow,
+          fg: U.C.ink, padX: 7, h: 15, align: 'right', stroke: U.C.ink, lw: 1
         });
-      U.text(ctx, pad2(world.match.level), card.x + card.w - 24, card.y + 72, {
-        size: 54, weight: 900, family: U.F.impact, fill: 'rgba(245,235,216,0)',
+      U.text(ctx, pad2(world.match.level), card.x + card.w - 22, card.y + 58, {
+        size: 50, weight: 900, family: U.F.impact, fill: 'rgba(245,235,216,0)',
         stroke: 'rgba(245,235,216,.13)', strokeWidth: 1.2, align: 'right'
       });
 
       // 左侧敌人立绘块：深色档案卡 + 奶油圆形舞台
-      var ax = card.x + 24, ay = card.y + 106, aw = 238, ah = 300;
+      var ax = card.x + 22, ay = card.y + 88, aw = 204, ah = 256;
       U.panel(ctx, ax, ay, aw, ah, {
         fill: theme.sky, stroke: U.C.ink, lw: 2, r: 4,
         shadow: U.C.ink, shadowX: 4, shadowY: 4
@@ -480,7 +488,7 @@
       U.dots(ctx, ax, ay, aw, ah, U.C.cream, .075, 12);
       ctx.fillStyle = U.C.cream;
       ctx.beginPath();
-      ctx.arc(ax + aw / 2, ay + 162, 96, 0, Math.PI * 2);
+      ctx.arc(ax + aw / 2, ay + 136, 82, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = U.C.ink;
       ctx.lineWidth = 2;
@@ -488,10 +496,10 @@
       ctx.strokeStyle = U.C.orange;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(ax + aw / 2, ay + 162, 103, 0, Math.PI * 2);
+      ctx.arc(ax + aw / 2, ay + 136, 88, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fillStyle = U.C.ink;
-      ctx.fillRect(ax, ay + ah - 44, aw, 44);
+      ctx.fillRect(ax, ay + ah - 42, aw, 42);
       ctx.restore();
 
       if (selected) {
@@ -499,82 +507,85 @@
           type: selected.id, color: selected.color, dark: selected.dark,
           x: 0, px: 0, y: 0, py: 0, alive: true, maxHp: selected.hp, hp: selected.hp, facing: 1
         };
-        var scale = selected.id === 'boss' ? 2.15 : 2.95;
+        // 立绘脚底对齐标签条上沿：先按脚底定位，再反推锚点，
+        // 避免缩放变化后怪图下沉压住名字（drawEnemy 内部还有 16px 脚底偏移）。
+        var spriteScale = selected.id === 'boss' ? 1.85 : 2.55;
+        var feetY = ay + ah - 36;
         ctx.save();
-        ctx.translate(ax + aw / 2, ay + ah - 58);
-        ctx.scale(scale, scale);
+        ctx.translate(ax + aw / 2, feetY - 16.5 * spriteScale);
+        ctx.scale(spriteScale, spriteScale);
         BI.sprites.drawEnemy(ctx, e, world.time, 1);
         ctx.restore();
         U.tag(ctx, fresh ? '初次登场' : '本关提醒', ax + 12, ay + 15, {
-          size: 6.5, family: U.F.cn, fill: U.C.yellow, fg: U.C.ink,
-          padX: 6, h: 14, align: 'left', stroke: U.C.ink, lw: 1
+          size: 7.2, family: U.F.cn, fill: U.C.yellow, fg: U.C.ink,
+          padX: 6, h: 15, align: 'left', stroke: U.C.ink, lw: 1
         });
-        U.text(ctx, selected.name, ax + 12, ay + ah - 17, {
-          size: 16, weight: 900, family: U.F.cn, fill: U.C.cream
+        U.text(ctx, selected.name, ax + 12, ay + ah - 15, {
+          size: 17.5, weight: 900, family: U.F.cn, fill: U.C.cream
         });
-        U.text(ctx, 'ENEMY FILE  /  ' + (world.map.bossBattle ? 'BOSS' : 'NPC'), ax + aw - 12, ay + ah - 18, {
-          size: 5.5, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.55)', align: 'right'
+        U.text(ctx, 'ENEMY FILE  /  ' + (world.map.bossBattle ? 'BOSS' : 'NPC'), ax + aw - 12, ay + ah - 16, {
+          size: 6.2, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.55)', align: 'right'
         });
       }
 
       // 右侧档案文字
-      var tx = ax + aw + 24, tw = card.x + card.w - tx - 24;
-      U.text(ctx, '敌情档案 / THREAT PROFILE', tx, ay + 8, {
-        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.ink, alpha: .45
+      var tx = ax + aw + 22, tw = card.x + card.w - 22 - tx;
+      U.text(ctx, '敌情档案 / THREAT PROFILE', tx, ay + 7, {
+        size: 7.6, weight: 700, family: U.F.mono, fill: U.C.ink, alpha: .45
       });
       if (selected) {
-        U.text(ctx, (fresh ? '初次登场  ' : '本关提醒  ') + selected.name, tx, ay + 32, {
-          size: 19, weight: 900, family: U.F.cn, fill: U.C.ink,
+        U.text(ctx, (fresh ? '初次登场  ' : '本关提醒  ') + selected.name, tx, ay + 30, {
+          size: 21, weight: 900, family: U.F.cn, fill: U.C.ink,
           shadow: U.C.yellow, shadowX: 2, shadowY: 2
         });
-        wrapText(ctx, selected.story, tx, ay + 56, tw, 9.3, 13, 'rgba(20,16,25,.7)', 4, 500, U.F.cn);
+        wrapText(ctx, selected.story, tx, ay + 54, tw, 10.4, 14, 'rgba(20,16,25,.7)', 3, 500, U.F.cn);
 
         ctx.strokeStyle = 'rgba(20,16,25,.16)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(tx, ay + 114);
-        ctx.lineTo(tx + tw, ay + 114);
+        ctx.moveTo(tx, ay + 102);
+        ctx.lineTo(tx + tw, ay + 102);
         ctx.stroke();
 
-        U.tag(ctx, '行动', tx, ay + 132, {
-          size: 7, family: U.F.cn, fill: U.C.green, fg: U.C.ink,
-          padX: 6, h: 14, align: 'left', stroke: U.C.ink, lw: 1
+        U.tag(ctx, '行动', tx, ay + 118, {
+          size: 7.6, family: U.F.cn, fill: U.C.green, fg: U.C.ink,
+          padX: 6, h: 15, align: 'left', stroke: U.C.ink, lw: 1
         });
-        wrapText(ctx, selected.mechanic, tx + 38, ay + 132, tw - 38, 8.8, 11, 'rgba(20,16,25,.78)', 3, 500, U.F.cn);
+        wrapText(ctx, selected.mechanic, tx + 42, ay + 118, tw - 42, 9.8, 12.5, 'rgba(20,16,25,.78)', 2, 500, U.F.cn);
 
-        U.tag(ctx, '攻击', tx, ay + 198, {
-          size: 7, family: U.F.cn, fill: U.C.orange, fg: U.C.ink,
-          padX: 6, h: 14, align: 'left', stroke: U.C.ink, lw: 1
+        U.tag(ctx, '攻击', tx, ay + 172, {
+          size: 7.6, family: U.F.cn, fill: U.C.orange, fg: U.C.ink,
+          padX: 6, h: 15, align: 'left', stroke: U.C.ink, lw: 1
         });
-        wrapText(ctx, selected.damage, tx + 38, ay + 198, tw - 38, 8.8, 11, 'rgba(20,16,25,.78)', 3, 500, U.F.cn);
+        wrapText(ctx, selected.damage, tx + 42, ay + 172, tw - 42, 9.8, 12.5, 'rgba(20,16,25,.78)', 2, 500, U.F.cn);
 
         // HP 计线条，填满档案右侧的下半区
-        var hpx = tx, hpy = ay + 246, hpw = tw, hph = 38;
+        var hpx = tx, hpy = ay + 212, hpw = tw, hph = 40;
         U.panel(ctx, hpx, hpy, hpw, hph, {
           fill: U.C.ink, stroke: U.C.ink, lw: 1.5, r: 2
         });
         U.text(ctx, '生命 / HP', hpx + 12, hpy + 12, {
-          size: 6.2, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.55)'
+          size: 7, weight: 700, family: U.F.mono, fill: 'rgba(245,235,216,.55)'
         });
         U.text(ctx, String(selected.hp), hpx + hpw - 12, hpy + 12, {
-          size: 7, weight: 900, family: U.F.mono, fill: U.C.yellow, align: 'right'
+          size: 8, weight: 900, family: U.F.mono, fill: U.C.yellow, align: 'right'
         });
         var maxPips = Math.min(8, Math.max(1, selected.hp));
         for (var hp = 0; hp < maxPips; hp++) {
           ctx.fillStyle = U.C.orange;
-          ctx.fillRect(hpx + 12 + hp * ((hpw - 24) / maxPips), hpy + 22, (hpw - 24) / maxPips - 3, 7);
+          ctx.fillRect(hpx + 12 + hp * ((hpw - 24) / maxPips), hpy + 23, (hpw - 24) / maxPips - 3, 7);
         }
       }
 
       // 底部任务条：把原先散落的说明收进一张黑色 mission 卡
-      var mx = card.x + 24, my = card.y + 432, mw = card.w - 48, mh = 100;
+      var mx = card.x + 22, my = card.y + 358, mw = card.w - 44, mh = 84;
       U.panel(ctx, mx, my, mw, mh, {
         fill: U.C.ink, stroke: U.C.ink, lw: 1.5, r: 3
       });
       ctx.fillStyle = U.C.orange;
       ctx.fillRect(mx, my, mw, 3);
       U.dots(ctx, mx, my, mw, mh, U.C.cream, .045, 12);
-      var c1 = mx + 16, c2 = mx + 234, c3 = mx + 442;
+      var c1 = mx + 16, c2 = mx + 206, c3 = mx + 390;
       ctx.strokeStyle = 'rgba(245,235,216,.14)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -584,34 +595,34 @@
       ctx.lineTo(c3 - 14, my + mh - 12);
       ctx.stroke();
 
-      U.text(ctx, '本关阵容 / SQUAD', c1, my + 18, {
-        size: 6, weight: 700, family: U.F.mono, fill: U.C.cyan
+      U.text(ctx, '本关阵容 / SQUAD', c1, my + 16, {
+        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.cyan
       });
       wrapText(ctx, b.types.map(function (id) { return BI.entities.TYPES[id].name; }).join(' / '),
-        c1, my + 38, 194, 8.5, 10, U.C.cream, 2, 700, U.F.cn);
-      U.text(ctx, '共 ' + world.enemies.length + ' 只', c1, my + 76, {
-        size: 7, weight: 700, family: U.F.mono, fill: U.C.yellow
+        c1, my + 35, 160, 9.4, 11.5, U.C.cream, 2, 700, U.F.cn);
+      U.text(ctx, '共 ' + world.enemies.length + ' 只', c1, my + 70, {
+        size: 7.8, weight: 700, family: U.F.mono, fill: U.C.yellow
       });
 
-      U.text(ctx, '场景机制 / STAGE RULE', c2, my + 18, {
-        size: 6, weight: 700, family: U.F.mono, fill: U.C.green
+      U.text(ctx, '场景机制 / STAGE RULE', c2, my + 16, {
+        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.green
       });
-      U.text(ctx, theme.subtitle, c2, my + 37, {
-        size: 8.5, weight: 900, family: U.F.cn, fill: U.C.cream
+      U.text(ctx, theme.subtitle, c2, my + 34, {
+        size: 9.4, weight: 900, family: U.F.cn, fill: U.C.cream
       });
-      wrapText(ctx, theme.mechanic, c2, my + 54, 188, 7, 9, 'rgba(245,235,216,.6)', 2, 500, U.F.cn);
+      wrapText(ctx, theme.mechanic, c2, my + 52, 152, 7.8, 10.5, 'rgba(245,235,216,.6)', 2, 500, U.F.cn);
 
-      U.text(ctx, '任务目标 / OBJECTIVE', c3, my + 18, {
-        size: 6, weight: 700, family: U.F.mono, fill: U.C.orange
+      U.text(ctx, '任务目标 / OBJECTIVE', c3, my + 16, {
+        size: 6.8, weight: 700, family: U.F.mono, fill: U.C.orange
       });
-      U.text(ctx, '击败全部敌人', c3, my + 40, {
-        size: 10, weight: 900, family: U.F.cn, fill: U.C.cream
+      U.text(ctx, '击败全部敌人', c3, my + 38, {
+        size: 11, weight: 900, family: U.F.cn, fill: U.C.cream
       });
       U.text(ctx, '即可过关', c3, my + 56, {
-        size: 7, weight: 500, family: U.F.cn, fill: 'rgba(245,235,216,.55)'
+        size: 7.8, weight: 500, family: U.F.cn, fill: 'rgba(245,235,216,.55)'
       });
 
-      // 固定命中区：测试和鼠标点击都依赖 230,582,260,52
+      // 固定命中区：渲染、输入与测试共用 BI.hud.briefingStart（230,530,260,46）
       var hover = BI.mouse.inside && BI.input.hitRect(bx, by, bw, bh);
       U.panel(ctx, bx, by, bw, bh, {
         fill: hover ? U.C.orange : U.C.yellow,
@@ -619,12 +630,12 @@
         shadow: U.C.ink, shadowX: 4, shadowY: 4
       });
       U.play(ctx, bx + 28, by + bh / 2, 12, U.C.ink);
-      U.text(ctx, '开始本关', bx + 49, by + 25, {
-        size: 18, weight: 900, family: U.F.cn, fill: U.C.ink
+      U.text(ctx, '开始本关', bx + 49, by + bh / 2, {
+        size: 19, weight: 900, family: U.F.cn, fill: U.C.ink
       });
-      U.keycap(ctx, 'ENTER', bx + bw - 75, by + 18, 54, 19, U.C.ink, U.C.cream);
+      U.keycap(ctx, 'ENTER', bx + bw - 75, by + 14, 54, 19, U.C.ink, U.C.cream);
       U.text(ctx, 'Enter / 空格 / 点击', card.x + card.w / 2, card.y + card.h - 20, {
-        size: 6.5, weight: 500, family: U.F.mono, fill: 'rgba(20,16,25,.45)', align: 'center'
+        size: 7.2, weight: 500, family: U.F.mono, fill: 'rgba(20,16,25,.45)', align: 'center'
       });
       ctx.restore();
     },

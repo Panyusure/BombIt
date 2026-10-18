@@ -216,6 +216,57 @@ test('enemy transport respects walls and bombs, and clears stale walking targets
     assert.ok(G.canStand(w.map, [], e.x, e.y, B.config.ENEMY_BOX, e.id), 'walking after transport never enters a wall');
   }
 });
+
+test('enemies leave the lower belt seam beside a hard wall instead of cancelling the belt forever', () => {
+  const B = runtime(), G = B.grid;
+  for (const type of ['gugu', 'claude', 'oupao', 'boss']) for (const hp of (type === 'boss' ? [8, 6, 3] : [1])) {
+    const w = world(B, 'adventure');
+    w.map = B.levelgen.generate(B.makeRng(1), { mode: 'adventure', theme: 'factory' }).map;
+    G.set(w.map, 4, 10, B.T.HARD); G.set(w.map, 6, 10, B.T.BRICK);
+    G.set(w.map, 5, 10, B.T.EMPTY); G.set(w.map, 5, 11, B.T.EMPTY);
+    const e = B.entities.create(type, 5, 9, 5); e.hp = hp; e.bombCd = 100; e.abilityCd = 100;
+    e.x -= 8; e.y += 22; e.moving = true; e.sceneryMotion = true; w.enemies = [e];
+    B.ai.apply(e, { x: 0, y: 1, c: 5, r: 10 });
+    let aligned = false;
+    for (let frame = 0; frame < 180; frame++) {
+      w.time += 1 / 60; B.ai.updateEnemy(w, e, 1 / 60);
+      assert.ok(G.canStand(w.map, [], e.x, e.y, B.config.ENEMY_BOX, e.id), `${type} seam collision`);
+      if (G.col(e.x) === 5 && G.row(e.y) === 10 && !e.sceneryMotion) { aligned = true; break; }
+    }
+    assert.ok(aligned, `${type} hp=${hp} must leave the belt seam and reach the ground center`);
+  }
+});
+
+test('enemies and bosses can leave every factory belt edge for the adjoining ground', () => {
+  const B = runtime(), G = B.grid;
+  const crossings = [[6, 3, 6, 4], [10, 5, 9, 5], [8, 9, 8, 8], [4, 7, 5, 7]];
+  for (const type of ['gugu', 'claude', 'oupao', 'boss']) for (const hp of (type === 'boss' ? [8, 6, 3] : [1])) {
+    for (const [c, r, tc, tr] of crossings) {
+      const w = world(B, 'adventure');
+      w.map = B.levelgen.generate(B.makeRng(1), { mode: 'adventure', theme: 'factory' }).map;
+      for (let y = 3; y <= 9; y++) for (let x = 4; x <= 10; x++) {
+        if (x < 6 || x > 8 || y < 5 || y > 7) G.set(w.map, x, y, B.T.EMPTY);
+      }
+      w.players[0].x = G.centerX(tc); w.players[0].y = G.centerY(tr);
+      w.rng.chance = () => true; // Keep the pursuit directed toward the ground.
+      const e = B.entities.create(type, c, r, 5); e.hp = hp; e.bombCd = 100; e.abilityCd = 100;
+      w.enemies = [e];
+      B.ai.apply(e, { x: tc - c, y: tr - r, c: tc, r: tr });
+      let leftBelt = false, aligned = false;
+      for (let frame = 0; frame < 120; frame++) {
+        w.time += 1 / 60; B.ai.updateEnemy(w, e, 1 / 60);
+        assert.ok(G.canStand(w.map, [], e.x, e.y, B.config.ENEMY_BOX, e.id), `${type} crossing collision`);
+        if (!w.map.landmark.path.some(cell => cell[0] === G.col(e.x) && cell[1] === G.row(e.y))) {
+          leftBelt = true;
+          if (!e.sceneryMotion) { aligned = true; break; }
+        }
+      }
+      assert.ok(leftBelt, `${type} hp=${hp} must walk from belt ${c},${r} toward ground ${tc},${tr}`);
+      assert.ok(aligned, `${type} hp=${hp} must finish aligning on the ground after leaving ${c},${r}`);
+    }
+  }
+});
+
 test('CLI failures use nonzero exit status and parseable JSON', () => {
   for (const args of [['act', '--frames', 'nan', '--session', 'cross'], ['act', '--boomb'], ['state', '--session', 'missing']]) {
     const p = spawnSync(process.execPath, ['cli/bombit.cjs', ...args, '--session-dir', directory, '--json'], { cwd: ROOT, encoding: 'utf8' });

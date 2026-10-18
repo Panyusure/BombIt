@@ -166,8 +166,11 @@
     // 关前介绍期间冻结整个战场，确认后下一帧才推进。
     if (w.briefing) {
       if (BI.input.wasPressed('Escape') || BI.input.wasPressed('KeyP')) { togglePause(); return; }
+      // 开始按钮的命中区跟档案渲染共用 BI.hud.briefingStart，避免两边对不上
+      var startBtn = BI.hud.briefingStart;
       if (BI.input.wasPressed('Enter') || BI.input.wasPressed('NumpadEnter') ||
-          BI.input.wasPressed('Space') || (BI.mouse.clicked && BI.input.hitRect(230, 582, 260, 52))) {
+          BI.input.wasPressed('Space') ||
+          (BI.mouse.clicked && BI.input.hitRect(startBtn.x, startBtn.y, startBtn.w, startBtn.h))) {
         w.briefing = null;
         BI.input.clear();
         BI.input.endMouseFrame();
