@@ -506,6 +506,8 @@
     app.pause = null;
     app.endAt = 0;
     FX.reset();
+    // 回菜单时从「选择模式」重新开始，保留上次模式和角色选择。
+    if (app.menu && BI.menu.openMode) BI.menu.openMode(app.menu);
     BI.input.clear();
   }
 

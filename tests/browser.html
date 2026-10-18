@@ -232,43 +232,54 @@ window.addEventListener('load', async function () {
     ok(p2Moved < 0, '2P 按 A 键向左走动了', 'dx=' + p2Moved.toFixed(1));
 
     /* ---------- 5. 菜单导航 ---------- */
-    group('5. 菜单：选模式 / 选角色');
+    group('5. 菜单：先选模式，再选角色');
     D.gotoMenu();
     var M0 = D.app.menu;
     ok(BI.menu.MODES.length === 3, '一共有三种模式', String(BI.menu.MODES.length));
     ok(BI.menu.MODES[0].id === 'adventure', '第 1 张卡是闯关打怪');
     ok(BI.menu.MODES[1].id === 'dig', '第 2 张卡是计时拆砖');
     ok(BI.menu.MODES[2].id === 'versus', '第 3 张卡是双人对战');
-    ok(M0.rows.length === 2, '单人模式下菜单有 2 行（模式 + 1P 角色）', String(M0.rows.length));
+    ok(M0.step === 'mode' && M0.rows.length === 1 && M0.rows[0].type === 'mode',
+       '开始菜单只有模式选择', M0.step + '/' + M0.rows.length);
     ok(M0.modeIndex === 0, '默认选中第 1 张卡', String(M0.modeIndex));
 
     D.press('ArrowRight');
-    ok(D.app.menu.modeIndex === 1, '按 → 切到第 2 张卡', String(D.app.menu.modeIndex));
-    ok(D.app.menu.rows.length === 2, '计时拆砖也是单人，还是 2 行', String(D.app.menu.rows.length));
-
+    ok(D.app.menu.modeIndex === 1 && D.app.menu.step === 'mode', '按 → 切到第 2 张卡', String(D.app.menu.modeIndex));
     D.press('ArrowRight');
-    ok(D.app.menu.modeIndex === 2, '再按 → 切到双人模式', String(D.app.menu.modeIndex));
-    ok(D.app.menu.rows.length === 3, '双人模式下多出 2P 角色行', String(D.app.menu.rows.length));
-
+    ok(D.app.menu.modeIndex === 2 && D.app.menu.step === 'mode', '再按 → 切到双人模式', String(D.app.menu.modeIndex));
     D.press('ArrowLeft');
     ok(D.app.menu.modeIndex === 1, '按 ← 切回第 2 张卡');
-    ok(D.app.menu.rows.length === 2, '行数跟着变回 2 行', String(D.app.menu.rows.length));
 
-    D.press('ArrowDown');
-    ok(D.app.menu.focus === 1, '按 ↓ 把焦点移到角色行', String(D.app.menu.focus));
+    D.press('Enter');
+    ok(D.scene === 'menu' && D.app.menu.step === 'chars', '选完模式后进入角色选择', D.app.menu.step);
+    ok(D.app.menu.rows.length === 1 && D.app.menu.rows[0].type === 'char' && D.app.menu.cards.length === 6,
+       '角色页显示六张小卡', D.app.menu.rows.length + '/' + D.app.menu.cards.length);
     var beforeChar = D.app.menu.charIndex[0];
     D.press('ArrowRight');
     ok(D.app.menu.charIndex[0] !== beforeChar || D.app.menu.chars.length === 1,
        '按 → 能换 1P 角色', beforeChar + ' -> ' + D.app.menu.charIndex[0]);
+    D.press('Escape');
+    ok(D.scene === 'menu' && D.app.menu.step === 'mode', '角色页按 Esc 返回模式选择', D.app.menu.step);
 
-    // 从菜单真的能开双人对战
+    // 从菜单真的能开双人对战：模式 → 1P 确认 → 2P 确认
     D.gotoMenu();
     var mv = D.app.menu;
     mv.modeIndex = 2;
     mv.focus = 0;
     BI.menu.layout(mv);
     D.press('Enter');
-    ok(D.scene === 'playing' && D.world.mode === 'versus', '在菜单选中双人卡能开对战',
+    ok(D.scene === 'menu' && mv.step === 'chars' && mv.player === 0,
+       '双人模式进入角色页时先选 1P', mv.step + '/' + mv.player);
+    ok(mv.tabs.length === 2, '双人角色页有两个玩家标签', String(mv.tabs.length));
+    D.press('Digit2');
+    ok(mv.player === 1, '数字 2 切到 2P 选角', String(mv.player));
+    D.press('Digit1');
+    ok(mv.player === 0, '数字 1 切回 1P 选角', String(mv.player));
+    D.press('Enter');
+    ok(D.scene === 'menu' && mv.step === 'chars' && mv.player === 1,
+       '确认 1P 后自动切到 2P', mv.step + '/' + mv.player);
+    D.press('Enter');
+    ok(D.scene === 'playing' && D.world.mode === 'versus', '确认 2P 后开始对战',
        D.scene + '/' + (D.world && D.world.mode));
     ok(D.world.players.length === 2, '双人模式有 2 个玩家');
 
@@ -277,12 +288,13 @@ window.addEventListener('load', async function () {
     var mm = D.app.menu;
     mm.modeIndex = 0;
     BI.menu.layout(mm);
-    mm.focus = 1;
+    D.press('Enter');
+    ok(mm.step === 'chars', '单人模式进入角色页');
     var pick = mm.chars.length - 1;
-    BI.menu.setIndex(mm, 1, pick);
+    BI.menu.setIndex(mm, 0, pick);
     var expectId = mm.chars[pick].id;
     D.press('Enter');
-    ok(D.scene === 'playing', '在菜单按 Enter 能开局', D.scene);
+    ok(D.scene === 'playing', '在角色页按 Enter 能开局', D.scene);
     ok(D.world.players[0].assetId === expectId, '菜单选的角色带进了游戏',
        String(expectId) + ' vs ' + String(D.world.players[0].assetId));
 
@@ -409,12 +421,16 @@ window.addEventListener('load', async function () {
     ok(D.scene === 'menu', '结算界面按 Esc 回菜单', D.scene);
 
     /* ---------- 10. 鼠标操作 ---------- */
-    group('10. 鼠标：点开始按钮 / 点菜单项');
+    group('10. 鼠标：分层菜单 / 点主按钮');
     D.gotoMenu();
     click(CFG.VIEW_W / 2, 566 + 28);
     D.tick(1 / 60);
     unclick();
-    ok(D.scene === 'playing', '点「开始游戏」按钮能开局', D.scene);
+    ok(D.scene === 'menu' && D.app.menu.step === 'chars', '点主按钮先进入角色选择', D.app.menu.step);
+    click(CFG.VIEW_W / 2, 566 + 28);
+    D.tick(1 / 60);
+    unclick();
+    ok(D.scene === 'playing', '角色页点主按钮开始游戏', D.scene);
 
     D.gotoMenu();
     var MM = D.app.menu;
@@ -423,15 +439,21 @@ window.addEventListener('load', async function () {
     click(modeItems[1].x + modeItems[1].w / 2, modeItems[1].y + modeItems[1].h / 2);
     D.tick(1 / 60);
     unclick();
-    ok(MM.modeIndex === 1, '点第二张模式卡能选中它', String(MM.modeIndex));
+    ok(MM.modeIndex === 1 && MM.step === 'mode', '点第二张模式卡只选中它', MM.modeIndex + '/' + MM.step);
     [2,0,2,1,0].forEach(function(mode){
+      D.gotoMenu();
+      MM = D.app.menu;
       var card=BI.menu.itemsOf(MM,MM.rows[0])[mode];
       click(card.x+card.w/2,card.y+card.h/2);D.tick(1/60);unclick();D.render(1);
-      var count=mode===2?2:1;
-      ok(D.scene==='menu'&&MM.rows.filter(function(row){return row.type==='char';}).length===count,
-        '鼠标切换模式 '+mode+' 立即显示 '+count+' 条选角栏');
-      ok(MM.rows.every(function(row,i){return i===0||row.y>=MM.rows[i-1].y+MM.rows[i-1].h;}),
-        '模式 '+mode+' 选角卡片不重叠');
+      ok(D.scene==='menu'&&MM.modeIndex===mode&&MM.step==='mode',
+        '鼠标切换模式 '+mode+' 后仍停留在模式页');
+      click(CFG.VIEW_W/2,566+28);D.tick(1/60);unclick();D.render(1);
+      ok(D.scene==='menu'&&MM.step==='chars'&&MM.cards.length===6,
+        '模式 '+mode+' 的角色页显示六张小卡');
+      ok(MM.cards.every(function(c){return c.x>=20&&c.x+c.w<=701&&c.y>=140&&c.y+c.h<=542;}),
+        '模式 '+mode+' 的角色卡全部落在菜单内');
+      ok(MM.cards.every(function(c,i){return i===0||c.y>=MM.cards[i-1].y+MM.cards[i-1].h||c.x>=MM.cards[i-1].x+MM.cards[i-1].w;}),
+        '模式 '+mode+' 的角色卡不重叠');
     });
 
     /* ---------- 11. 音效 ---------- */
@@ -1199,6 +1221,7 @@ window.addEventListener('load', async function () {
     group('未来：六人选角 / 被动放弹 / 通灵素材 / 跨关与重生');
     D.gotoMenu();D.app.menu=BI.menu.create();
     var fm=D.app.menu,fi=fm.chars.findIndex(function(ch){return ch.id==='weilai';});
+    BI.menu.openCharacter(fm);
     ok(fm.chars.length===6&&fi>=0,'未来作为第六个可选角色加入菜单，通灵素材不是额外角色');
     var frow=fm.rows.find(function(row){return row.type==='char';}),fcards=BI.menu.itemsOf(fm,frow);
     ok(fcards.length===6&&fcards.every(function(card){return card.w>=80&&card.x+card.w<=701;}),'六人卡片仍可点击且全部位于菜单范围内');
@@ -1212,7 +1235,8 @@ window.addEventListener('load', async function () {
     ok(menuWords.some(function(s){return s.indexOf('作者：初霁')>=0;}),'开始界面署名作者',menuWords.join(' | '));
     ok(menuWords.some(function(s){return s.indexOf(CFG.VERSION+'　·　作者：初霁')===0;}),
        '开始界面同时显示版本号（读 CFG.VERSION，不写死）', CFG.VERSION+' → '+menuWords.filter(function(s){return s.indexOf('初霁')>=0;}).join(' | '));
-    D.press('Enter');D.press('Enter');
+    D.press('Enter');   // 角色页确认，进入闯关简报
+    D.press('Enter');   // 关闭简报，真正开始对局
     var fw=D.world,fp=fw.players[0];
     ok(fp.assetId==='weilai'&&!fp.soulEvolved,'鼠标选中未来后可正常开始普通形态对局');
     for(var fr=1;fr<12;fr++)for(var fcol=1;fcol<14;fcol++)G.set(fw.map,fcol,fr,BI.T.EMPTY);
@@ -1270,7 +1294,7 @@ window.addEventListener('load', async function () {
     D.quickStart('adventure','FUTURE_RESET');
     ok(!D.world.players[0].soulEvolved&&!D.world.players[0].soulBombs,'重新开始一场冒险时通灵成长清零');
     ['xiaonuo','axiu','arui','xiaoyan','xiaotian'].forEach(function(id){
-      var loreMenu=BI.menu.create();loreMenu.charIndex[0]=loreMenu.chars.findIndex(function(ch){return ch.id===id;});
+      var loreMenu=BI.menu.create();BI.menu.openCharacter(loreMenu);loreMenu.charIndex[0]=loreMenu.chars.findIndex(function(ch){return ch.id===id;});
       var words=[],savedText=iconCtx.fillText;iconCtx.fillText=function(s){words.push(String(s));};BI.menu.draw(iconCtx,loreMenu);iconCtx.fillText=savedText;
       ok(words.includes(BI.CHARACTER_LORE[id].summary),'选角页可读到'+id+'的官网背景摘要');
     });
@@ -1346,7 +1370,7 @@ window.addEventListener('load', async function () {
       '小炎描述改成吸收后反弹 5×5，不再写蓄火加火力',BI.SKILLS.xiaoyan.desc);
     var cdText={xiaonuo:'冷却12秒',axiu:'冷却15秒',arui:'冷却14秒',xiaoyan:'冷却12秒',xiaotian:'冷却12秒'};
     Object.keys(cdText).forEach(function(id){
-      var st=BI.menu.create();st.charIndex[0]=st.chars.findIndex(function(ch){return ch.id===id;});
+      var st=BI.menu.create();BI.menu.openCharacter(st);st.charIndex[0]=st.chars.findIndex(function(ch){return ch.id===id;});
       var words=[],savedText=iconCtx.fillText;iconCtx.fillText=function(s){words.push(String(s));};
       BI.menu.draw(iconCtx,st);iconCtx.fillText=savedText;
       ok(words.some(function(s){return s.indexOf(cdText[id])>=0;}),'菜单里 '+id+' 显示「'+cdText[id]+'」',
@@ -1663,6 +1687,8 @@ window.addEventListener('load', async function () {
     await new Promise(function(resolve){setTimeout(resolve,30);});
     ok(!D.app.replayOpen && !document.getElementById('replay-dialog') && D.app.menu === rememberedMenu,
       '返回游戏关闭播放器并保留模式与角色选择');
+    D.press('Enter',1/60);
+    ok(D.app.menu.step === 'chars', '从回放返回后先进入角色选择');
     D.press('Enter',1/60);
     ok(D.scene === 'playing', '从回放返回后仍可正常开始游戏');
 

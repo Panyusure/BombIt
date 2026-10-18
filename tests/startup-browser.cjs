@@ -104,12 +104,15 @@ async function main() {
   if(capture){const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(scratch,'menu.png'),Buffer.from(shot.data,'base64'));}
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await until('BI.debug.app.menu && BI.debug.app.menu.step === "chars"');
   if(slowBackground) {
     await until('!!document.getElementById("boot")');
     assert.equal(await evaluate('BI.debug.world'),null,'Do not start a partially loaded game');
     assert.equal(await evaluate('BI.debug.app.errors.length'),0);
   }
   releaseBackground();
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
   await until('BI.debug.scene === "playing" && !document.getElementById("boot")');
   assert.equal(await evaluate('BI.assets.loading.done === BI.assets.loading.total'),true);
   if (!localFile) {
