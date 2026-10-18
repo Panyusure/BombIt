@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BOMBIT — Q版泡泡堂 · Motion ID</title>
+<meta name="description" content="Q版泡泡堂 / BombIt 游戏介绍动效短片。六位精灵，三种模式，一颗炸弹。全部由代码与 Canvas 2D 实时生成。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div class="ambient" aria-hidden="true">
+    <span class="ambient__blob ambient__blob--a"></span>
+    <span class="ambient__blob ambient__blob--b"></span>
+  </div>
+
+  <div class="topbar">
+    <div class="topbar__brand">
+      <span class="brand-dot"></span>
+      <b>BOMBIT</b><span>/ MOTION ID</span>
+    </div>
+    <div class="topbar__meta">Q版泡泡堂 · 精灵冒险与同屏对战</div>
+    <div class="topbar__spec">48 SEC · 1920×1080 · 60 FPS</div>
+  </div>
+
+  <main class="player" aria-label="BOMBIT 动效短片播放器">
+    <div class="stage" id="stageWrap">
+      <canvas id="stage" width="1920" height="1080" aria-label="Q版泡泡堂动效短片画面"></canvas>
+      <div class="stage__grain" aria-hidden="true"></div>
+      <div class="stage__edge" aria-hidden="true"></div>
+
+      <section id="cover" class="cover is-hidden">
+        <div class="cover__left">
+          <div class="kicker"><span class="kicker__line"></span>GAME MOTION ID / 2026</div>
+          <h1 class="cover-title">
+            <span class="cover-title__cn">Q版泡泡堂</span>
+            <span class="cover-title__en">BOMBIT<sup>®</sup></span>
+          </h1>
+          <p class="cover-sub">六位精灵，三种模式，一颗炸弹。<br>把平面设计撞进游戏世界的一支快节奏动效短片。</p>
+          <div class="cover-actions">
+            <button id="startFromCover" class="btn btn--primary" type="button">
+              <span class="btn__play" aria-hidden="true"></span>播放短片
+            </button>
+            <a class="btn btn--ghost" href="out/BombIt_MotionID_1080p60.mp4" download>下载 MP4</a>
+          </div>
+          <div class="cover-load">
+            <div class="cover-load__track"><span id="progress"></span></div>
+            <span id="status">加载中 / LOADING</span>
+          </div>
+          <div class="cover-tags">
+            <span>CANVAS 2D</span><span>ORIGINAL SCORE</span><span>ALL CODE</span>
+          </div>
+        </div>
+        <div class="cover__right">
+          <div class="cover__stamp">
+            <span>6</span>
+            <em>SPIRITS<br>3 WAYS<br>1 FUSE</em>
+          </div>
+          <div class="cover__credits">
+            <span>BOMBIT / v2.2</span>
+            <span>SOUND ON RECOMMENDED</span>
+          </div>
+        </div>
+      </section>
+
+      <div id="controls" class="controls">
+        <button id="playBtn" class="icon-btn" type="button" aria-label="播放 / 暂停"><span class="icon-btn__glyph"></span></button>
+        <div class="scrub" id="scrub" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="48" aria-valuenow="0">
+          <div class="scrub__fill" id="fill"></div>
+          <div class="scrub__ticks" aria-hidden="true"></div>
+        </div>
+        <span class="time" id="time">00:00 / 00:48</span>
+        <button id="mute" class="text-btn" type="button">SOUND</button>
+        <button id="replay" class="text-btn" type="button">REPLAY</button>
+        <button id="fullscreen" class="text-btn" type="button">FULL</button>
+        <a class="text-btn text-btn--link" href="out/BombIt_MotionID_1080p60.mp4" download>MP4</a>
+      </div>
+
+      <div class="stage__hint" aria-hidden="true"><span>SPACE</span> 播放 / 暂停　<span>← →</span> 逐帧　<span>F</span> 全屏</div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Q版泡泡堂 · BOMBIT — 非商业粉丝动效习作</span>
+    <span class="foot__mid">六位精灵 / 三种模式 / 一颗炸弹</span>
+    <span>CANVAS 2D + WEB AUDIO · NO ENGINE</span>
+  </footer>
+</div>
+
+<script src="src/core.js"></script>
+<script src="src/scenes.js"></script>
+<script src="src/scenes-modes.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
